@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 80" width="420" height="80" fill="none">
+  <defs>
+    <linearGradient id="nodeGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2563EB"/>
+      <stop offset="100%" stop-color="#1E3A8A"/>
+    </linearGradient>
+    <linearGradient id="nodeGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7C3AED"/>
+      <stop offset="100%" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="threadGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#2563EB" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#7C3AED" stop-opacity="0.5"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ═══════════════════════════════════ -->
+  <!--  ICON: 6-node circular loop, 80×80 -->
+  <!-- ═══════════════════════════════════ -->
+  <g transform="translate(0,0)">
+
+    <!-- Center of icon = (40, 40), orbit radius = 26 -->
+    <!-- Node positions (hex layout, 0° = top):
+         N0: (40, 14)
+         N1: (62.5, 27)
+         N2: (62.5, 53)
+         N3: (40, 66)
+         N4: (17.5, 53)
+         N5: (17.5, 27)
+    -->
+
+    <!-- Connection lines (drawn first, behind nodes) -->
+    <!-- Outer ring -->
+    <line x1="40" y1="14"  x2="62.5" y2="27"  stroke="url(#threadGrad)" stroke-width="1.6" stroke-linecap="round"/>
+    <line x1="62.5" y1="27" x2="62.5" y2="53"  stroke="url(#threadGrad)" stroke-width="1.6" stroke-linecap="round"/>
+    <line x1="62.5" y1="53" x2="40"   y2="66"  stroke="url(#threadGrad)" stroke-width="1.6" stroke-linecap="round"/>
+    <line x1="40"   y1="66" x2="17.5" y2="53"  stroke="url(#threadGrad)" stroke-width="1.6" stroke-linecap="round"/>
+    <line x1="17.5" y1="53" x2="17.5" y2="27"  stroke="url(#threadGrad)" stroke-width="1.6" stroke-linecap="round"/>
+    <line x1="17.5" y1="27" x2="40"   y2="14"  stroke="url(#threadGrad)" stroke-width="1.6" stroke-linecap="round"/>
+
+    <!-- Inner cross-connections (digital thread feel) -->
+    <line x1="40"   y1="14"  x2="62.5" y2="53"  stroke="#1E3A8A" stroke-width="1" stroke-linecap="round" opacity="0.45"/>
+    <line x1="62.5" y1="27"  x2="17.5" y2="53"  stroke="#1E3A8A" stroke-width="1" stroke-linecap="round" opacity="0.45"/>
+    <line x1="62.5" y1="53"  x2="17.5" y2="27"  stroke="#1E3A8A" stroke-width="1" stroke-linecap="round" opacity="0.45"/>
+
+    <!-- Center node -->
+    <circle cx="40" cy="40" r="3.5" fill="#1E3A8A" opacity="0.3"/>
+
+    <!-- Spoke lines to center -->
+    <line x1="40" y1="14"  x2="40" y2="40" stroke="#1E3A8A" stroke-width="0.8" opacity="0.2"/>
+    <line x1="62.5" y1="27" x2="40" y2="40" stroke="#1E3A8A" stroke-width="0.8" opacity="0.2"/>
+    <line x1="62.5" y1="53" x2="40" y2="40" stroke="#1E3A8A" stroke-width="0.8" opacity="0.2"/>
+    <line x1="40" y1="66"  x2="40" y2="40" stroke="#1E3A8A" stroke-width="0.8" opacity="0.2"/>
+    <line x1="17.5" y1="53" x2="40" y2="40" stroke="#1E3A8A" stroke-width="0.8" opacity="0.2"/>
+    <line x1="17.5" y1="27" x2="40" y2="40" stroke="#1E3A8A" stroke-width="0.8" opacity="0.2"/>
+
+    <!-- Outer nodes: alternating blue / purple accent -->
+    <!-- N0 top -->
+    <circle cx="40"   cy="14"   r="5.5" fill="url(#nodeGrad1)"/>
+    <circle cx="40"   cy="14"   r="2.5" fill="white" opacity="0.9"/>
+
+    <!-- N1 top-right -->
+    <circle cx="62.5" cy="27"   r="4.5" fill="#1E3A8A"/>
+    <circle cx="62.5" cy="27"   r="2"   fill="white" opacity="0.9"/>
+
+    <!-- N2 bottom-right (accent purple) -->
+    <circle cx="62.5" cy="53"   r="5"   fill="url(#nodeGrad2)"/>
+    <circle cx="62.5" cy="53"   r="2.2" fill="white" opacity="0.9"/>
+
+    <!-- N3 bottom -->
+    <circle cx="40"   cy="66"   r="4.5" fill="#1E3A8A"/>
+    <circle cx="40"   cy="66"   r="2"   fill="white" opacity="0.9"/>
+
+    <!-- N4 bottom-left -->
+    <circle cx="17.5" cy="53"   r="5"   fill="url(#nodeGrad1)"/>
+    <circle cx="17.5" cy="53"   r="2.2" fill="white" opacity="0.9"/>
+
+    <!-- N5 top-left (accent) -->
+    <circle cx="17.5" cy="27"   r="4.5" fill="#1E3A8A"/>
+    <circle cx="17.5" cy="27"   r="2"   fill="white" opacity="0.9"/>
+
+  </g>
+
+  <!-- ══════════════════════════════════ -->
+  <!--  WORDMARK                          -->
+  <!-- ══════════════════════════════════ -->
+  <g transform="translate(92, 0)">
+
+    <!-- "Plural" — weight 600 -->
+    <text
+      x="0" y="51"
+      font-family="'DM Sans', 'Helvetica Neue', Arial, sans-serif"
+      font-size="30"
+      font-weight="600"
+      letter-spacing="-0.5"
+      fill="#1E3A8A">Plural</text>
+
+    <!-- "PLM" — weight 300, letter-spaced -->
+    <text
+      x="116" y="51"
+      font-family="'DM Sans', 'Helvetica Neue', Arial, sans-serif"
+      font-size="30"
+      font-weight="300"
+      letter-spacing="3"
+      fill="#2563EB">PLM</text>
+
+    <!-- Accent underline beneath "PLM" -->
+    <rect x="116" y="56" width="68" height="1.5" rx="0.75" fill="url(#nodeGrad2)" opacity="0.7"/>
+
+  </g>
+
+</svg>

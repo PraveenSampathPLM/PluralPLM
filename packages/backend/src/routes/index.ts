@@ -1,0 +1,16 @@
+export { default as authRoutes } from "./auth.routes.js";
+export { default as usersRoutes } from "./users.routes.js";
+export { default as itemRoutes } from "./items.routes.js";
+export { default as formulaRoutes } from "./formulas.routes.js";
+export { default as bomRoutes } from "./bom.routes.js";
+export { default as changesRoutes } from "./changes.routes.js";
+export { default as releasesRoutes } from "./releases.routes.js";
+export { default as workflowsRoutes } from "./workflows.routes.js";
+export { default as specificationsRoutes } from "./specifications.routes.js";
+export { default as complianceRoutes } from "./compliance.routes.js";
+export { default as reportsRoutes } from "./reports.routes.js";
+export { default as dashboardRoutes } from "./dashboard.routes.js";
+export { default as configRoutes } from "./config.routes.js";
+export { default as containersRoutes } from "./containers.routes.js";
+export { default as documentsRoutes } from "./documents.routes.js";
+export { default as labelsRoutes } from "./labels.routes.js";

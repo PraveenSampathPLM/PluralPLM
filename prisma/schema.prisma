@@ -1,0 +1,478 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Industry {
+  CPG
+  CHEMICAL
+  TYRE
+  POLYMER
+  PAINT
+  FOOD_BEVERAGE
+}
+
+enum ItemType {
+  RAW_MATERIAL
+  INTERMEDIATE
+  FINISHED_GOOD
+  PACKAGING
+}
+
+enum LifecycleStatus {
+  DRAFT
+  ACTIVE
+  OBSOLETE
+  UNDER_CHANGE
+}
+
+enum FormulaStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  RELEASED
+  OBSOLETE
+}
+
+enum RecipeType {
+  FORMULA_RECIPE
+  FINISHED_GOOD_RECIPE
+}
+
+enum ChangeType {
+  ECR
+  ECO
+  ECN
+  DCO
+}
+
+enum ChangePriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ChangeStatus {
+  NEW
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  IMPLEMENTED
+}
+
+enum ReleaseStatus {
+  NEW
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  RELEASED
+  REJECTED
+}
+
+enum DocumentStatus {
+  DRAFT
+  RELEASED
+  OBSOLETE
+}
+
+enum DocumentType {
+  SDS
+  TDS
+  COA
+  SPECIFICATION
+  PROCESS
+  QUALITY
+  REGULATORY
+  OTHER
+}
+
+enum BomType {
+  FG_BOM
+  FML_BOM
+}
+
+enum BomStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  RELEASED
+  OBSOLETE
+}
+
+enum ContainerStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  plants    Plant[]
+  users     User[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Plant {
+  id             String       @id @default(cuid())
+  name           String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  boms           BOM[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Role {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  description String?
+  users       User[]
+  permissions Permission[]
+}
+
+model Permission {
+  id      String @id @default(cuid())
+  action  String
+  roleId  String
+  role    Role   @relation(fields: [roleId], references: [id])
+}
+
+model NumberSequence {
+  entity    String   @id
+  prefix    String
+  padding   Int
+  next      Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id             String        @id @default(cuid())
+  email          String        @unique
+  name           String
+  passwordHash   String
+  roleId         String
+  role           Role          @relation(fields: [roleId], references: [id])
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  formulas       Formula[]
+  containerMemberships ContainerMembership[]
+  ownedContainers ProductContainer[] @relation("ContainerOwner")
+  requestedCr    ChangeRequest[] @relation("RequestedBy")
+  requestedRelease ReleaseRequest[] @relation("RequestedReleaseBy")
+  documents      Document[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model ProductContainer {
+  id          String      @id @default(cuid())
+  code        String      @unique
+  name        String
+  description String?
+  industry    Industry    @default(CHEMICAL)
+  status      ContainerStatus @default(ACTIVE)
+  ownerId     String?
+  owner       User?       @relation("ContainerOwner", fields: [ownerId], references: [id])
+  roles       ContainerRole[]
+  memberships ContainerMembership[]
+  items       Item[]
+  formulas    Formula[]
+  boms        BOM[]
+  changes     ChangeRequest[]
+  releases    ReleaseRequest[]
+  specifications Specification[]
+  documents   Document[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model ContainerRole {
+  id          String   @id @default(cuid())
+  containerId String
+  container   ProductContainer @relation(fields: [containerId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  permissions Json
+  members     ContainerMembership[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([containerId, name])
+}
+
+model ContainerMembership {
+  id              String   @id @default(cuid())
+  containerId     String
+  container       ProductContainer @relation(fields: [containerId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  containerRoleId String
+  containerRole   ContainerRole @relation(fields: [containerRoleId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([containerId, userId])
+}
+
+model Item {
+  id              String          @id @default(cuid())
+  itemCode        String
+  revisionMajor   Int             @default(1)
+  revisionIteration Int           @default(1)
+  revisionLabel   String          @default("1.1")
+  name            String
+  description     String?
+  industryType    Industry
+  itemType        ItemType
+  uom             String
+  density         Float?
+  viscosity       Float?
+  pH              Float?
+  flashPoint      Float?
+  regulatoryFlags Json?
+  attributes      Json?
+  containerId     String?
+  container       ProductContainer? @relation(fields: [containerId], references: [id])
+  status          LifecycleStatus @default(DRAFT)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  formulaIngredients FormulaIngredient[]
+  outputRecipes      Formula[]          @relation("FormulaOutputItem")
+  parentBoms         BOM[]              @relation("BomParentItem")
+  bomLines           BOMLine[]
+  specifications     Specification[]
+
+  @@unique([itemCode, revisionMajor, revisionIteration])
+}
+
+model Formula {
+  id                     String              @id @default(cuid())
+  formulaCode            String
+  version                Int
+  revisionMajor          Int                 @default(1)
+  revisionIteration      Int                 @default(1)
+  revisionLabel          String              @default("1.1")
+  name                   String
+  description            String?
+  recipeType             RecipeType          @default(FORMULA_RECIPE)
+  industryType           Industry
+  outputItemId           String?
+  outputItem             Item?               @relation("FormulaOutputItem", fields: [outputItemId], references: [id])
+  targetYield            Float?
+  yieldUom               String?
+  batchSize              Float?
+  batchUom               String?
+  processingInstructions String?
+  status                 FormulaStatus       @default(DRAFT)
+  effectiveDate          DateTime?
+  expiryDate             DateTime?
+  ownerId                String
+  owner                  User                @relation(fields: [ownerId], references: [id])
+  containerId            String?
+  container              ProductContainer?   @relation(fields: [containerId], references: [id])
+  ingredients            FormulaIngredient[]
+  usedAsInputIn          FormulaIngredient[] @relation("FormulaInput")
+  bomInputLines          BOMLine[]           @relation("BomInputFormula")
+  boms                   BOM[]
+  specs                  Specification[]
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+
+  @@unique([formulaCode, version])
+}
+
+model FormulaIngredient {
+  id                String   @id @default(cuid())
+  formulaId         String
+  formula           Formula  @relation(fields: [formulaId], references: [id], onDelete: Cascade)
+  itemId            String?
+  item              Item?    @relation(fields: [itemId], references: [id])
+  inputFormulaId    String?
+  inputFormula      Formula? @relation("FormulaInput", fields: [inputFormulaId], references: [id])
+  quantity          Float
+  uom               String
+  percentage        Float?
+  lowerLimit        Float?
+  upperLimit        Float?
+  isOptional        Boolean  @default(false)
+  substitutionGroup String?
+  additionStep      String?
+  additionSequence  Int?
+  mixingTime        String?
+}
+
+model BOM {
+  id            String    @id @default(cuid())
+  bomCode       String
+  version       Int
+  revisionMajor Int       @default(1)
+  revisionIteration Int   @default(1)
+  revisionLabel String    @default("1.1")
+  status        BomStatus @default(DRAFT)
+  bomType       BomType   @default(FML_BOM)
+  parentItemId  String?
+  parentItem    Item?     @relation("BomParentItem", fields: [parentItemId], references: [id])
+  formulaId     String?
+  formula       Formula?  @relation(fields: [formulaId], references: [id])
+  type          String
+  containerId   String?
+  container     ProductContainer? @relation(fields: [containerId], references: [id])
+  plantId       String?
+  plant         Plant?    @relation(fields: [plantId], references: [id])
+  effectiveDate DateTime?
+  lines         BOMLine[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([bomCode, version])
+}
+
+model BOMLine {
+  id                  String  @id @default(cuid())
+  bomId               String
+  bom                 BOM     @relation(fields: [bomId], references: [id], onDelete: Cascade)
+  lineNumber          Int?
+  itemId              String?
+  item                Item?    @relation(fields: [itemId], references: [id])
+  inputFormulaId      String?
+  inputFormula        Formula? @relation("BomInputFormula", fields: [inputFormulaId], references: [id])
+  quantity            Float
+  uom                 String
+  scrapFactor         Float?
+  phaseStep           String?
+  operationStep       String?
+  referenceDesignator String?
+}
+
+model ChangeRequest {
+  id               String         @id @default(cuid())
+  crNumber         String         @unique
+  title            String
+  description      String?
+  type             ChangeType
+  priority         ChangePriority
+  requestedById    String
+  requestedBy      User           @relation("RequestedBy", fields: [requestedById], references: [id])
+  affectedItems    String[]
+  affectedFormulas String[]
+  proposedChanges  Json?
+  impactAssessment String?
+  containerId      String?
+  container        ProductContainer? @relation(fields: [containerId], references: [id])
+  status           ChangeStatus   @default(NEW)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model ReleaseRequest {
+  id              String        @id @default(cuid())
+  rrNumber        String        @unique
+  title           String
+  description     String?
+  status          ReleaseStatus @default(NEW)
+  requestedById   String
+  requestedBy     User          @relation("RequestedReleaseBy", fields: [requestedById], references: [id])
+  containerId     String?
+  container       ProductContainer? @relation(fields: [containerId], references: [id])
+  targetItems     String[]
+  targetBoms      String[]
+  targetFormulas  String[]
+  affectedItems   String[]
+  affectedFormulas String[]
+  affectedBoms    String[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model Document {
+  id              String         @id @default(cuid())
+  docNumber       String         @unique
+  name            String
+  description     String?
+  fileName        String
+  filePath        String
+  fileSize        Int
+  mimeType        String
+  docType         DocumentType   @default(OTHER)
+  status          DocumentStatus @default(DRAFT)
+  revisionMajor   Int            @default(1)
+  revisionIteration Int          @default(1)
+  revisionLabel   String         @default("1.1")
+  ownerId         String
+  owner           User           @relation(fields: [ownerId], references: [id])
+  containerId     String?
+  container       ProductContainer? @relation(fields: [containerId], references: [id])
+  links           DocumentLink[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+}
+
+model DocumentLink {
+  id          String   @id @default(cuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  entityType  String
+  entityId    String
+  createdAt   DateTime @default(now())
+}
+
+model WorkflowDefinition {
+  id          String   @id @default(cuid())
+  name        String
+  states      Json
+  transitions Json
+  actions     Json?
+  industry    Industry
+  entityType  String
+  instances   WorkflowInstance[]
+}
+
+model WorkflowInstance {
+  id           String             @id @default(cuid())
+  definitionId String
+  definition   WorkflowDefinition @relation(fields: [definitionId], references: [id])
+  entityId     String
+  entityType   String
+  currentState String
+  history      Json
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+}
+
+model Specification {
+  id         String   @id @default(cuid())
+  itemId     String?
+  item       Item?    @relation(fields: [itemId], references: [id])
+  formulaId  String?
+  formula    Formula? @relation(fields: [formulaId], references: [id])
+  containerId String?
+  container   ProductContainer? @relation(fields: [containerId], references: [id])
+  specType   String
+  attribute  String
+  value      String?
+  uom        String?
+  minValue   Float?
+  maxValue   Float?
+  testMethod String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  action     String
+  actorId    String?
+  payload    Json?
+  createdAt  DateTime @default(now())
+}

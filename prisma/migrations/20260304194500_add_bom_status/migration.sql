@@ -1,0 +1,5 @@
+-- CreateEnum
+CREATE TYPE "BomStatus" AS ENUM ('DRAFT', 'IN_REVIEW', 'APPROVED', 'RELEASED', 'OBSOLETE');
+
+-- AlterTable
+ALTER TABLE "BOM" ADD COLUMN "status" "BomStatus" NOT NULL DEFAULT 'DRAFT';

@@ -1,0 +1,42 @@
+{
+  "info": {
+    "name": "PLM Project API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth Login",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] },
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"admin@plm.local\",\n  \"password\": \"Password@123\"\n}" }
+      }
+    },
+    {
+      "name": "List Items",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": { "raw": "{{baseUrl}}/api/items?page=1&pageSize=20", "host": ["{{baseUrl}}"], "path": ["api", "items"] }
+      }
+    },
+    {
+      "name": "List Formulas",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": { "raw": "{{baseUrl}}/api/formulas", "host": ["{{baseUrl}}"], "path": ["api", "formulas"] }
+      }
+    },
+    {
+      "name": "Dashboard",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": { "raw": "{{baseUrl}}/api/dashboard", "host": ["{{baseUrl}}"], "path": ["api", "dashboard"] }
+      }
+    }
+  ],
+  "variable": [{ "key": "baseUrl", "value": "http://localhost:4000" }, { "key": "token", "value": "" }]
+}

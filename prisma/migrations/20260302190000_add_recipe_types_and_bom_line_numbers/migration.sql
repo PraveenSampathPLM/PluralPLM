@@ -1,0 +1,28 @@
+DO $$
+BEGIN
+  CREATE TYPE "RecipeType" AS ENUM ('FORMULA_RECIPE', 'FINISHED_GOOD_RECIPE');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END
+$$;
+
+ALTER TABLE "Formula"
+  ADD COLUMN IF NOT EXISTS "recipeType" "RecipeType" NOT NULL DEFAULT 'FORMULA_RECIPE',
+  ADD COLUMN IF NOT EXISTS "outputItemId" TEXT;
+
+ALTER TABLE "Formula"
+  ADD CONSTRAINT "Formula_outputItemId_fkey"
+  FOREIGN KEY ("outputItemId") REFERENCES "Item"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+ALTER TABLE "FormulaIngredient"
+  ADD COLUMN IF NOT EXISTS "inputFormulaId" TEXT;
+
+ALTER TABLE "FormulaIngredient"
+  ALTER COLUMN "itemId" DROP NOT NULL;
+
+ALTER TABLE "FormulaIngredient"
+  ADD CONSTRAINT "FormulaIngredient_inputFormulaId_fkey"
+  FOREIGN KEY ("inputFormulaId") REFERENCES "Formula"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+ALTER TABLE "BOMLine"
+  ADD COLUMN IF NOT EXISTS "lineNumber" INTEGER;

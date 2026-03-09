@@ -1,0 +1,21 @@
+{
+  "name": "plm-project",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @plm/frontend & npm run dev -w @plm/backend",
+    "build": "npm run build -ws",
+    "lint": "npm run lint -ws",
+    "typecheck": "npm run typecheck -ws",
+    "test": "npm run test -ws",
+    "seed": "npm run seed -w @plm/backend",
+    "seed:dev": "npm run seed:dev -w @plm/backend",
+    "seed:demo": "npm run seed:demo -w @plm/backend"
+  },
+  "devDependencies": {
+    "@rollup/wasm-node": "^4.59.0"
+  }
+}
