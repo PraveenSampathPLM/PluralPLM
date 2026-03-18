@@ -2,6 +2,9 @@
 
 Enterprise Product Lifecycle Management platform for process industries — Food & Beverage, CPG, Chemicals, Paints, Tyre/Rubber, Polymers.
 
+<img width="1709" height="889" alt="image" src="https://github.com/user-attachments/assets/fff4f1e8-a9d1-4408-af5e-756faefd8035" />
+
+
 Built with **React 18 + TypeScript + Vite** (frontend) and **Express + Prisma + PostgreSQL** (backend).
 
 ---
