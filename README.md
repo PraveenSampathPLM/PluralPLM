@@ -302,4 +302,4 @@ All endpoints except `/api/auth/login` require `Authorization: Bearer <token>`.
 
 ## License
 
-MIT
+GNU General Public License v3.0
