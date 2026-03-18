@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../services/prisma.js";
 import { writeAuditLog } from "../services/audit.service.js";
 import { z } from "zod";
@@ -8,6 +9,7 @@ import { createReadStream } from "fs";
 import multer from "multer";
 import { allocateNextSequenceValue } from "../services/config-store.service.js";
 import { ensureContainerAccess, getAccessibleContainerIds, isGlobalAdmin } from "../services/container-access.service.js";
+import { checkoutEntity, checkinEntity, undoCheckout } from "../services/versioning.service.js";
 
 const router = Router();
 
@@ -29,6 +31,21 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage });
+
+async function resolveReadableFilePath(storedPath: string): Promise<string | null> {
+  const uniqueCandidates = Array.from(
+    new Set([storedPath, path.resolve(process.cwd(), storedPath), path.resolve(process.cwd(), "..", storedPath)])
+  );
+  for (const candidate of uniqueCandidates) {
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch {
+      // Try next candidate.
+    }
+  }
+  return null;
+}
 
 const createDocumentSchema = z.object({
   name: z.string().min(2),
@@ -137,7 +154,7 @@ router.post("/", upload.single("file"), async (req, res, next) => {
       return;
     }
 
-    const docNumber = await allocateNextSequenceValue("DOCUMENT");
+    const docNumber = await allocateNextSequenceValue("DOCUMENT", parsed.containerId);
     const created = await prisma.document.create({
       data: {
         docNumber,
@@ -170,7 +187,10 @@ router.post("/", upload.single("file"), async (req, res, next) => {
 
 router.get("/:id", async (req, res, next) => {
   try {
-    const record = await prisma.document.findUnique({ where: { id: req.params.id } });
+    const record = await prisma.document.findUnique({
+      where: { id: req.params.id },
+      include: { checkedOutBy: { select: { id: true, name: true } } }
+    });
     if (!record) {
       res.status(404).json({ message: "Document not found" });
       return;
@@ -198,9 +218,51 @@ router.get("/:id/download", async (req, res, next) => {
       res.status(403).json({ message: "Forbidden" });
       return;
     }
+    const readablePath = await resolveReadableFilePath(record.filePath);
+    if (!readablePath) {
+      res.status(404).json({ message: "Document file is missing on server storage." });
+      return;
+    }
     res.setHeader("Content-Type", record.mimeType);
     res.setHeader("Content-Disposition", `attachment; filename=\"${record.fileName}\"`);
-    createReadStream(record.filePath).pipe(res);
+    const stream = createReadStream(readablePath);
+    stream.on("error", () => {
+      if (!res.headersSent) {
+        res.status(404).json({ message: "Document file is missing on server storage." });
+      } else {
+        res.end();
+      }
+    });
+    stream.pipe(res);
+  } catch (error) {
+    next(error);
+  }
+});
+
+const updateDocumentSchema = z.object({
+  name: z.string().min(2).optional(),
+  description: z.string().optional().nullable(),
+  docType: z.enum(["SDS", "TDS", "COA", "SPECIFICATION", "PROCESS", "QUALITY", "REGULATORY", "OTHER"]).optional(),
+  status: z.enum(["DRAFT", "RELEASED", "OBSOLETE"]).optional()
+});
+
+router.put("/:id", async (req, res, next) => {
+  try {
+    const actorId = req.user?.sub;
+    if (!actorId) { res.status(401).json({ message: "Unauthorized" }); return; }
+    const record = await prisma.document.findUnique({ where: { id: req.params.id } });
+    if (!record) { res.status(404).json({ message: "Document not found" }); return; }
+    const hasAccess = await ensureDocumentAccess(req, record.containerId, "WRITE");
+    if (!hasAccess) { res.status(403).json({ message: "Forbidden" }); return; }
+    const parsed = updateDocumentSchema.parse(req.body);
+    const updateData: Prisma.DocumentUpdateInput = {};
+    if (parsed.name !== undefined) updateData.name = parsed.name;
+    if (parsed.description !== undefined) updateData.description = parsed.description;
+    if (parsed.docType !== undefined) updateData.docType = parsed.docType;
+    if (parsed.status !== undefined) updateData.status = parsed.status;
+    const updated = await prisma.document.update({ where: { id: req.params.id }, data: updateData });
+    await writeAuditLog({ entityType: "DOCUMENT", entityId: updated.id, action: "UPDATE", actorId, payload: updated });
+    res.json(updated);
   } catch (error) {
     next(error);
   }
@@ -251,6 +313,108 @@ router.post("/:id/link", async (req, res, next) => {
 
     res.status(201).json(link);
   } catch (error) {
+    next(error);
+  }
+});
+
+// Remove link by entity type+id (e.g. unlink from item)
+router.delete("/:id/links/entity/:entityType/:entityId", async (req, res, next) => {
+  try {
+    const actorId = req.user?.sub;
+    if (!actorId) { res.status(401).json({ message: "Unauthorized" }); return; }
+    const document = await prisma.document.findUnique({ where: { id: req.params.id } });
+    if (!document) { res.status(404).json({ message: "Document not found" }); return; }
+    const hasAccess = await ensureDocumentAccess(req, document.containerId, "WRITE");
+    if (!hasAccess) { res.status(403).json({ message: "Forbidden" }); return; }
+    const link = await prisma.documentLink.findFirst({
+      where: { documentId: document.id, entityType: req.params.entityType, entityId: req.params.entityId }
+    });
+    if (!link) { res.status(404).json({ message: "Link not found." }); return; }
+    await prisma.documentLink.delete({ where: { id: link.id } });
+    await writeAuditLog({ entityType: "DOCUMENT_LINK", entityId: link.id, action: "DELETE", actorId, payload: { linkId: link.id, entityType: link.entityType, entityId: link.entityId } });
+    res.json({ success: true });
+  } catch (error) { next(error); }
+});
+
+router.delete("/:id/links/:linkId", async (req, res, next) => {
+  try {
+    const actorId = req.user?.sub;
+    if (!actorId) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+    const document = await prisma.document.findUnique({ where: { id: req.params.id } });
+    if (!document) {
+      res.status(404).json({ message: "Document not found" });
+      return;
+    }
+    const hasAccess = await ensureDocumentAccess(req, document.containerId, "WRITE");
+    if (!hasAccess) {
+      res.status(403).json({ message: "Forbidden" });
+      return;
+    }
+
+    const link = await prisma.documentLink.findFirst({
+      where: { id: req.params.linkId, documentId: document.id }
+    });
+    if (!link) {
+      res.status(404).json({ message: "Link not found." });
+      return;
+    }
+
+    await prisma.documentLink.delete({ where: { id: req.params.linkId } });
+
+    await writeAuditLog({
+      entityType: "DOCUMENT_LINK",
+      entityId: link.id,
+      action: "DELETE",
+      actorId,
+      payload: { linkId: link.id, entityType: link.entityType, entityId: link.entityId }
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/:id/checkout", async (req, res, next) => {
+  try {
+    const userId = req.user?.sub;
+    if (!userId) { res.status(401).json({ message: "Unauthorized" }); return; }
+    const result = await checkoutEntity("DOCUMENT", req.params.id, userId);
+    res.json(result);
+  } catch (error: unknown) {
+    const e = error as { statusCode?: number; message?: string };
+    if (e.statusCode) { res.status(e.statusCode).json({ message: e.message }); return; }
+    next(error);
+  }
+});
+
+router.post("/:id/checkin", async (req, res, next) => {
+  try {
+    const userId = req.user?.sub;
+    if (!userId) { res.status(401).json({ message: "Unauthorized" }); return; }
+    const result = await checkinEntity("DOCUMENT", req.params.id, userId, req.body ?? {});
+    res.json(result);
+  } catch (error: unknown) {
+    const e = error as { statusCode?: number; message?: string };
+    if (e.statusCode) { res.status(e.statusCode).json({ message: e.message }); return; }
+    next(error);
+  }
+});
+
+router.post("/:id/undo-checkout", async (req, res, next) => {
+  try {
+    const userId = req.user?.sub;
+    const userRole = req.user?.role ?? "";
+    if (!userId) { res.status(401).json({ message: "Unauthorized" }); return; }
+    const isAdmin = ["System Admin", "PLM Admin", "Container Admin"].includes(userRole);
+    const result = await undoCheckout("DOCUMENT", req.params.id, userId, isAdmin);
+    res.json(result);
+  } catch (error: unknown) {
+    const e = error as { statusCode?: number; message?: string };
+    if (e.statusCode) { res.status(e.statusCode).json({ message: e.message }); return; }
     next(error);
   }
 });

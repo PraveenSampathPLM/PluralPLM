@@ -26,10 +26,70 @@ async function login() {
 }
 
 async function getFirstId(token, endpoint) {
-  const data = await fetchJson(`${API_URL}${endpoint}`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  return data.data?.[0]?.id ?? null;
+  try {
+    const data = await fetchJson(`${API_URL}${endpoint}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return data.data?.[0]?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function ensureReleaseId(token, containerId, existingId) {
+  if (existingId) {
+    return existingId;
+  }
+  try {
+    const created = await fetchJson(`${API_URL}/releases`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        title: "Help Center Screenshot Release",
+        description: "Auto-generated for help screenshot capture.",
+        status: "NEW",
+        targetItems: [],
+        targetFormulas: [],
+        ...(containerId ? { containerId } : {})
+      })
+    });
+    return created.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function ensureDocumentId(token, containerId, existingId) {
+  if (existingId) {
+    return existingId;
+  }
+  try {
+    const form = new FormData();
+    const blob = new Blob(["Help Center screenshot sample document"], { type: "text/plain" });
+    form.append("file", blob, "help-center-sample.txt");
+    form.append("name", "Help Center Sample Document");
+    form.append("description", "Auto-generated for help screenshot capture.");
+    form.append("docType", "OTHER");
+    form.append("status", "DRAFT");
+    if (containerId) {
+      form.append("containerId", containerId);
+    }
+    const response = await fetch(`${API_URL}/documents`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: form
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const created = await response.json();
+    return created.id ?? null;
+  } catch {
+    return null;
+  }
 }
 
 async function getContainerId(token) {
@@ -42,15 +102,16 @@ async function getContainerId(token) {
 async function main() {
   const token = await login();
   const containerId = await getContainerId(token);
-
-  const [itemId, formulaId, bomId, changeId, releaseId, docId] = await Promise.all([
+  let [itemId, formulaId, changeId, releaseId, docId, artworkId] = await Promise.all([
     getFirstId(token, "/items"),
     getFirstId(token, "/formulas"),
-    getFirstId(token, "/bom"),
     getFirstId(token, "/changes"),
     getFirstId(token, "/releases"),
-    getFirstId(token, "/documents")
+    getFirstId(token, "/documents"),
+    getFirstId(token, "/artworks")
   ]);
+  releaseId = await ensureReleaseId(token, containerId, releaseId);
+  docId = await ensureDocumentId(token, containerId, docId);
 
   const routes = [
     { filename: "help-dashboard.png", path: "/" },
@@ -58,11 +119,25 @@ async function main() {
     ...(itemId ? [{ filename: "help-material-detail.png", path: `/items/${itemId}` }] : []),
     { filename: "help-formulation-list.png", path: "/formulas" },
     ...(formulaId ? [{ filename: "help-formulation-detail.png", path: `/formulas/${formulaId}` }] : []),
-    { filename: "help-bom-list.png", path: "/bom" },
-    ...(bomId ? [{ filename: "help-bom-detail.png", path: `/bom/${bomId}` }] : []),
     { filename: "help-specifications.png", path: "/specifications" },
     { filename: "help-documents.png", path: "/documents" },
     ...(docId ? [{ filename: "help-document-detail.png", path: `/documents/${docId}` }] : []),
+    { filename: "help-artworks.png", path: "/artworks" },
+    ...(artworkId
+      ? [
+          {
+            filename: "help-artwork-detail.png",
+            path: `/artworks/${artworkId}`,
+            prepare: async (page) => {
+              const tab = page.getByRole("button", { name: "Proofing" });
+              if ((await tab.count()) > 0) {
+                await tab.first().click();
+                await page.waitForTimeout(700);
+              }
+            }
+          }
+        ]
+      : []),
     { filename: "help-changes.png", path: "/changes" },
     ...(changeId ? [{ filename: "help-change-detail.png", path: `/changes/${changeId}` }] : []),
     { filename: "help-releases.png", path: "/releases" },
@@ -88,6 +163,9 @@ async function main() {
     const page = await context.newPage();
     const url = `${BASE_URL}${route.path}`;
     await page.goto(url, { waitUntil: "networkidle" });
+    if (route.prepare) {
+      await route.prepare(page);
+    }
     await page.waitForTimeout(800);
     const filePath = path.join(outputDir, route.filename);
     await page.screenshot({ path: filePath, fullPage: true });

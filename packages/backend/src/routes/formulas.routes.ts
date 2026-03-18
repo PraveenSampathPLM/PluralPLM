@@ -7,14 +7,13 @@ import { allocateNextSequenceValue } from "../services/config-store.service.js";
 import { formatRevisionLabel, getRevisionScheme } from "../services/revision.service.js";
 import { ensureContainerAccess, getAccessibleContainerIds, isGlobalAdmin } from "../services/container-access.service.js";
 import PDFDocument from "pdfkit";
+import { checkoutEntity, checkinEntity, undoCheckout, reviseEntity } from "../services/versioning.service.js";
 
 const router = Router();
 
 const createFormulaSchema = z.object({
   formulaCode: z.string().min(2).optional(),
   version: z.number().int().positive().default(1),
-  recipeType: z.enum(["FORMULA_RECIPE", "FINISHED_GOOD_RECIPE"]).default("FORMULA_RECIPE"),
-  outputItemId: z.string().optional(),
   name: z.string().min(2),
   description: z.string().optional(),
   targetYield: z.number().optional(),
@@ -23,7 +22,7 @@ const createFormulaSchema = z.object({
   batchUom: z.string().optional(),
   containerId: z.string().optional(),
   processingInstructions: z.string().optional(),
-  status: z.enum(["DRAFT", "IN_REVIEW", "APPROVED", "RELEASED", "OBSOLETE"]).default("DRAFT"),
+  status: z.enum(["IN_WORK", "UNDER_REVIEW", "RELEASED"]).default("IN_WORK"),
   ingredients: z
     .array(
       z.object({
@@ -53,7 +52,7 @@ const updateFormulaSchema = z.object({
   name: z.string().min(2).optional(),
   description: z.string().optional(),
   processingInstructions: z.string().optional(),
-  status: z.enum(["DRAFT", "IN_REVIEW", "APPROVED", "RELEASED", "OBSOLETE"]).optional(),
+  status: z.enum(["IN_WORK", "UNDER_REVIEW", "RELEASED"]).optional(),
   containerId: z.string().nullable().optional()
 });
 
@@ -106,50 +105,23 @@ async function validateRecipeBusinessRules(
   input: z.infer<typeof createFormulaSchema>,
   industry: string
 ): Promise<void> {
-  if (input.recipeType === "FORMULA_RECIPE" && input.outputItemId) {
-    throw new Error("Formula Recipe output is the formula itself. Do not set outputItemId.");
-  }
-
-  if (input.recipeType === "FINISHED_GOOD_RECIPE" && !input.outputItemId) {
-    throw new Error("Finished Good Recipe requires an outputItemId.");
-  }
-
   const itemIds = Array.from(new Set(input.ingredients.map((line) => line.itemId).filter((id): id is string => Boolean(id))));
   const inputFormulaIds = Array.from(
     new Set(input.ingredients.map((line) => line.inputFormulaId).filter((id): id is string => Boolean(id)))
   );
 
-  const [items, inputFormulas, outputItem] = await Promise.all([
+  const [items, inputFormulas] = await Promise.all([
     itemIds.length ? prisma.item.findMany({ where: { id: { in: itemIds } }, select: { id: true, itemType: true } }) : Promise.resolve([]),
     inputFormulaIds.length
       ? prisma.formula.findMany({
           where: { id: { in: inputFormulaIds } },
-          select: { id: true, recipeType: true, industryType: true, status: true }
+          select: { id: true, industryType: true, status: true }
         })
-      : Promise.resolve([]),
-    input.outputItemId
-      ? prisma.item.findUnique({ where: { id: input.outputItemId }, select: { id: true, itemType: true, industryType: true } })
-      : Promise.resolve(null)
+      : Promise.resolve([])
   ]);
 
   const itemById = new Map(items.map((item) => [item.id, item]));
   const formulaById = new Map(inputFormulas.map((formula) => [formula.id, formula]));
-
-  if (input.recipeType === "FINISHED_GOOD_RECIPE" && !input.ingredients.some((line) => line.inputFormulaId)) {
-    throw new Error("Finished Good Recipe must include at least one input formula.");
-  }
-
-  if (input.outputItemId) {
-    if (!outputItem) {
-      throw new Error("Selected output item does not exist.");
-    }
-    if (outputItem.industryType !== industry) {
-      throw new Error("Output item must match container industry.");
-    }
-    if (input.recipeType === "FINISHED_GOOD_RECIPE" && outputItem.itemType !== "FINISHED_GOOD") {
-      throw new Error("Finished Good Recipe output must be an item of type FINISHED_GOOD.");
-    }
-  }
 
   for (const [index, line] of input.ingredients.entries()) {
     if (line.itemId) {
@@ -157,12 +129,8 @@ async function validateRecipeBusinessRules(
       if (!item) {
         throw new Error(`Line ${index + 1}: item not found.`);
       }
-
-      if (input.recipeType === "FORMULA_RECIPE" && !["RAW_MATERIAL", "INTERMEDIATE"].includes(item.itemType)) {
+      if (!["RAW_MATERIAL", "INTERMEDIATE"].includes(item.itemType)) {
         throw new Error(`Line ${index + 1}: Formula Recipe accepts only RAW_MATERIAL or INTERMEDIATE item inputs.`);
-      }
-      if (input.recipeType === "FINISHED_GOOD_RECIPE" && item.itemType !== "PACKAGING") {
-        throw new Error(`Line ${index + 1}: Finished Good Recipe accepts item inputs only of type PACKAGING.`);
       }
     }
 
@@ -173,9 +141,6 @@ async function validateRecipeBusinessRules(
       }
       if (inputFormula.industryType !== industry) {
         throw new Error(`Line ${index + 1}: input formula must match container industry.`);
-      }
-      if (inputFormula.recipeType !== "FORMULA_RECIPE") {
-        throw new Error(`Line ${index + 1}: only Formula Recipes can be used as formula inputs.`);
       }
     }
   }
@@ -204,7 +169,7 @@ router.get("/", async (req, res, next) => {
     };
     const data = await prisma.formula.findMany({
       where,
-      include: { ingredients: { include: { item: true, inputFormula: true } }, owner: true, outputItem: true },
+      include: { ingredients: { include: { item: true, inputFormula: true } }, owner: true },
       distinct: ["formulaCode"],
       orderBy: [{ formulaCode: "asc" }, { version: "desc" }],
       skip: (page - 1) * pageSize,
@@ -234,7 +199,7 @@ router.post("/", async (req, res, next) => {
       res.status(403).json({ message: "No write access to selected container. Choose a container you can write to." });
       return;
     }
-    const formulaCode = parsed.formulaCode ?? (await allocateNextSequenceValue("FORMULA"));
+    const formulaCode = parsed.formulaCode ?? (await allocateNextSequenceValue("FORMULA", parsed.containerId));
     const revisionScheme = await getRevisionScheme("FORMULA");
     const revisionMajor = parsed.version;
     const revisionIteration = 1;
@@ -254,9 +219,7 @@ router.post("/", async (req, res, next) => {
         revisionLabel: formatRevisionLabel(revisionMajor, revisionIteration, revisionScheme),
         name: parsed.name,
         description: parsed.description ?? null,
-        recipeType: parsed.recipeType,
         industryType: container.industry,
-        ...(parsed.outputItemId ? { outputItemId: parsed.outputItemId } : {}),
         ...(typeof parsed.targetYield === "number" ? { targetYield: parsed.targetYield } : {}),
         ...(parsed.yieldUom ? { yieldUom: parsed.yieldUom } : {}),
         ...(typeof parsed.batchSize === "number" ? { batchSize: parsed.batchSize } : {}),
@@ -318,12 +281,10 @@ router.post("/:id/clone", async (req, res, next) => {
         revisionLabel: formatRevisionLabel(version, 1, await getRevisionScheme("FORMULA")),
         name: `${source.name} v${version}`,
         description: source.description,
-        recipeType: source.recipeType,
         industryType: source.industryType,
-        ...(source.outputItemId ? { outputItemId: source.outputItemId } : {}),
         ownerId: source.ownerId,
         containerId: source.containerId,
-        status: "DRAFT",
+        status: "IN_WORK",
         ingredients: {
           create: source.ingredients.map((ingredient) => ({
             ...(ingredient.itemId ? { itemId: ingredient.itemId } : {}),
@@ -371,7 +332,7 @@ router.post("/:id/copy", async (req, res, next) => {
       return;
     }
 
-    const copyCode = await allocateNextSequenceValue("FORMULA");
+    const copyCode = await allocateNextSequenceValue("FORMULA", source.containerId);
     const revisionScheme = await getRevisionScheme("FORMULA");
     const copied = await prisma.formula.create({
       data: {
@@ -382,12 +343,10 @@ router.post("/:id/copy", async (req, res, next) => {
         revisionLabel: formatRevisionLabel(1, 1, revisionScheme),
         name: `${source.name} Copy`,
         description: source.description,
-        recipeType: source.recipeType,
         industryType: source.industryType,
-        ...(source.outputItemId ? { outputItemId: source.outputItemId } : {}),
         ownerId: source.ownerId,
         containerId: source.containerId,
-        status: "DRAFT",
+        status: "IN_WORK",
         ...(typeof source.targetYield === "number" ? { targetYield: source.targetYield } : {}),
         ...(source.yieldUom ? { yieldUom: source.yieldUom } : {}),
         ...(typeof source.batchSize === "number" ? { batchSize: source.batchSize } : {}),
@@ -452,12 +411,10 @@ router.post("/:id/revise", async (req, res, next) => {
         revisionLabel: formatRevisionLabel(version, 1, revisionScheme),
         name: source.name,
         description: source.description,
-        recipeType: source.recipeType,
         industryType: source.industryType,
-        ...(source.outputItemId ? { outputItemId: source.outputItemId } : {}),
         ownerId: source.ownerId,
         containerId: source.containerId,
-        status: "DRAFT",
+        status: "IN_WORK",
         ...(typeof source.targetYield === "number" ? { targetYield: source.targetYield } : {}),
         ...(source.yieldUom ? { yieldUom: source.yieldUom } : {}),
         ...(typeof source.batchSize === "number" ? { batchSize: source.batchSize } : {}),
@@ -508,7 +465,7 @@ router.post("/:id/check-out", async (req, res, next) => {
       res.status(403).json({ message: "Forbidden" });
       return;
     }
-    const updated = await prisma.formula.update({ where: { id: formulaId }, data: { status: "IN_REVIEW" } });
+    const updated = await prisma.formula.update({ where: { id: formulaId }, data: { status: "UNDER_REVIEW" } });
     const actorId = req.user?.sub;
     await writeAuditLog({
       entityType: "FORMULA",
@@ -531,18 +488,40 @@ router.post("/:id/check-in", async (req, res, next) => {
       res.status(404).json({ message: "Formula not found" });
       return;
     }
+    if (existing.status !== "UNDER_REVIEW") {
+      res.status(400).json({ message: "Only formulas under review can be checked in." });
+      return;
+    }
     const hasAccess = await ensureFormulaAccess(req, existing.containerId, "WRITE");
     if (!hasAccess) {
       res.status(403).json({ message: "Forbidden" });
       return;
     }
+
+    // Validate that ingredient percentages sum to 100%
+    const ingredients = await prisma.formulaIngredient.findMany({
+      where: { formulaId },
+      select: { percentage: true }
+    });
+    const ingredientsWithPercentage = ingredients.filter((i) => i.percentage !== null && i.percentage !== undefined);
+    if (ingredientsWithPercentage.length > 0) {
+      const total = ingredientsWithPercentage.reduce((sum, i) => sum + (i.percentage ?? 0), 0);
+      const rounded = Math.round(total * 1000) / 1000;
+      if (rounded !== 100) {
+        res.status(400).json({
+          message: `Check-in blocked: ingredient percentages must sum to 100%. Current total: ${rounded.toFixed(3)}%.`
+        });
+        return;
+      }
+    }
+
     const revisionScheme = await getRevisionScheme("FORMULA");
     const revisionMajor = existing.revisionMajor;
     const revisionIteration = existing.revisionIteration + 1;
     const updated = await prisma.formula.update({
       where: { id: formulaId },
       data: {
-        status: "APPROVED",
+        status: "RELEASED",
         revisionIteration,
         revisionLabel: formatRevisionLabel(revisionMajor, revisionIteration, revisionScheme)
       }
@@ -591,7 +570,7 @@ router.get("/:id", async (req, res, next) => {
   try {
     const formula = await prisma.formula.findUnique({
       where: { id: req.params.id },
-      include: { ingredients: { include: { item: true, inputFormula: true } }, owner: true, outputItem: true }
+      include: { ingredients: { include: { item: true, inputFormula: true } }, owner: true, checkedOutBy: { select: { id: true, name: true } } }
     });
 
     if (!formula) {
@@ -650,8 +629,6 @@ router.put("/:id", async (req, res, next) => {
     const updated = await prisma.formula.update({
       where: { id: formulaId },
       data: {
-        ...(parsed.recipeType ? { recipeType: parsed.recipeType } : {}),
-        ...(parsed.outputItemId !== undefined ? { outputItemId: parsed.outputItemId } : {}),
         ...(parsed.name ? { name: parsed.name } : {}),
         ...(parsed.description !== undefined ? { description: parsed.description || null } : {}),
         ...(parsed.processingInstructions !== undefined ? { processingInstructions: parsed.processingInstructions || null } : {}),
@@ -682,8 +659,8 @@ router.put("/:id/structure", async (req, res, next) => {
       res.status(404).json({ message: "Formula not found" });
       return;
     }
-    if (existing.status !== "DRAFT") {
-      res.status(400).json({ message: "Only Draft formulations can be edited." });
+    if (existing.status !== "IN_WORK") {
+      res.status(400).json({ message: "Only IN_WORK formulations can be edited." });
       return;
     }
     const hasAccess = await ensureFormulaAccess(req, existing.containerId, "WRITE");
@@ -695,8 +672,6 @@ router.put("/:id/structure", async (req, res, next) => {
     const validationPayload = {
       formulaCode: existing.formulaCode,
       version: existing.version,
-      recipeType: existing.recipeType,
-      outputItemId: parsed.outputItemId ?? existing.outputItemId ?? undefined,
       name: existing.name,
       description: existing.description ?? undefined,
       targetYield: existing.targetYield ?? undefined,
@@ -712,12 +687,6 @@ router.put("/:id/structure", async (req, res, next) => {
 
     const updated = await prisma.$transaction(async (tx) => {
       await tx.formulaIngredient.deleteMany({ where: { formulaId } });
-      await tx.formula.update({
-        where: { id: formulaId },
-        data: {
-          ...(parsed.outputItemId !== undefined ? { outputItemId: parsed.outputItemId } : {})
-        }
-      });
       await tx.formulaIngredient.createMany({
         data: parsed.ingredients.map((ingredient) => ({
           formulaId,
@@ -731,7 +700,7 @@ router.put("/:id/structure", async (req, res, next) => {
       });
       return tx.formula.findUnique({
         where: { id: formulaId },
-        include: { ingredients: { include: { item: true, inputFormula: true } }, owner: true, outputItem: true }
+        include: { ingredients: { include: { item: true, inputFormula: true } }, owner: true }
       });
     });
 
@@ -763,6 +732,10 @@ router.delete("/:id", async (req, res, next) => {
       res.status(403).json({ message: "Forbidden" });
       return;
     }
+    if (existing.status === "RELEASED") {
+      res.status(409).json({ message: "Cannot delete a Released formula. Obsolete it first." });
+      return;
+    }
     await prisma.formula.delete({ where: { id: formulaId } });
     const actorId = req.user?.sub;
     await writeAuditLog({
@@ -787,10 +760,9 @@ router.get("/:id/links", async (req, res, next) => {
         ingredients: {
           include: {
             item: { select: { id: true, itemCode: true, name: true, itemType: true, status: true } },
-            inputFormula: { select: { id: true, formulaCode: true, version: true, name: true, recipeType: true, status: true } }
+            inputFormula: { select: { id: true, formulaCode: true, version: true, name: true, status: true } }
           }
-        },
-        outputItem: { select: { id: true, itemCode: true, name: true, itemType: true, status: true } }
+        }
       }
     });
 
@@ -804,11 +776,14 @@ router.get("/:id/links", async (req, res, next) => {
       return;
     }
 
-    const [boms, specifications, relatedChanges, workflows] = await Promise.all([
-      prisma.bOM.findMany({
+    const [fgStructures, specifications, relatedChanges, workflows] = await Promise.all([
+      prisma.fGStructure.findMany({
         where: { formulaId },
-        include: { lines: { include: { item: { select: { id: true, itemCode: true, name: true } } } } },
-        orderBy: [{ bomCode: "asc" }, { version: "desc" }]
+        include: {
+          fgItem: { select: { id: true, itemCode: true, name: true, itemType: true, status: true } },
+          packagingLines: { include: { item: { select: { id: true, itemCode: true, name: true } } } }
+        },
+        orderBy: [{ version: "desc" }]
       }),
       prisma.specification.findMany({
         where: { formulaId },
@@ -845,13 +820,18 @@ router.get("/:id/links", async (req, res, next) => {
       })
     ]);
 
+    const boms = fgStructures.map((fg) => ({
+      id: fg.id,
+      bomCode: `${fg.fgItem.itemCode}-FG-BOM`,
+      version: fg.version,
+      type: "FG_BOM"
+    }));
+
     res.json({
       formula: {
         id: formula.id,
         formulaCode: formula.formulaCode,
         version: formula.version,
-        recipeType: formula.recipeType,
-        outputItem: formula.outputItem,
         name: formula.name,
         status: formula.status,
         ingredients: formula.ingredients
@@ -866,6 +846,60 @@ router.get("/:id/links", async (req, res, next) => {
   }
 });
 
+router.post("/:id/checkout", async (req, res, next) => {
+  try {
+    const userId = req.user?.sub;
+    if (!userId) { res.status(401).json({ message: "Unauthorized" }); return; }
+    const result = await checkoutEntity("FORMULA", req.params.id, userId);
+    res.json(result);
+  } catch (error: unknown) {
+    const e = error as { statusCode?: number; message?: string };
+    if (e.statusCode) { res.status(e.statusCode).json({ message: e.message }); return; }
+    next(error);
+  }
+});
+
+router.post("/:id/checkin", async (req, res, next) => {
+  try {
+    const userId = req.user?.sub;
+    if (!userId) { res.status(401).json({ message: "Unauthorized" }); return; }
+    const result = await checkinEntity("FORMULA", req.params.id, userId, req.body ?? {});
+    res.json(result);
+  } catch (error: unknown) {
+    const e = error as { statusCode?: number; message?: string };
+    if (e.statusCode) { res.status(e.statusCode).json({ message: e.message }); return; }
+    next(error);
+  }
+});
+
+router.post("/:id/undo-checkout", async (req, res, next) => {
+  try {
+    const userId = req.user?.sub;
+    const userRole = req.user?.role ?? "";
+    if (!userId) { res.status(401).json({ message: "Unauthorized" }); return; }
+    const isAdmin = ["System Admin", "PLM Admin", "Container Admin"].includes(userRole);
+    const result = await undoCheckout("FORMULA", req.params.id, userId, isAdmin);
+    res.json(result);
+  } catch (error: unknown) {
+    const e = error as { statusCode?: number; message?: string };
+    if (e.statusCode) { res.status(e.statusCode).json({ message: e.message }); return; }
+    next(error);
+  }
+});
+
+router.post("/:id/revise-versioned", async (req, res, next) => {
+  try {
+    const userId = req.user?.sub;
+    if (!userId) { res.status(401).json({ message: "Unauthorized" }); return; }
+    const result = await reviseEntity("FORMULA", req.params.id, userId);
+    res.json(result);
+  } catch (error: unknown) {
+    const e = error as { statusCode?: number; message?: string };
+    if (e.statusCode) { res.status(e.statusCode).json({ message: e.message }); return; }
+    next(error);
+  }
+});
+
 router.get("/:id/pdf-export", async (_req, res) => {
   res.status(501).json({ message: "PDF export endpoint scaffolded; implementation pending" });
 });
@@ -875,7 +909,6 @@ router.get("/:id/msds-pdf", async (req, res, next) => {
     const formula = await prisma.formula.findUnique({
       where: { id: req.params.id },
       include: {
-        outputItem: true,
         ingredients: { include: { item: true, inputFormula: true } },
         specs: true
       }
@@ -899,7 +932,7 @@ router.get("/:id/msds-pdf", async (req, res, next) => {
     doc.pipe(res);
 
     const specsByType = formula.specs.reduce<Record<string, typeof formula.specs>>((acc, spec) => {
-      acc[spec.specType] = acc[spec.specType] ? [...acc[spec.specType], spec] : [spec];
+      acc[spec.specType] = [...(acc[spec.specType] ?? []), spec];
       return acc;
     }, {});
 
@@ -914,9 +947,6 @@ router.get("/:id/msds-pdf", async (req, res, next) => {
       doc.moveDown(2);
       doc.fillColor("#111").font("Helvetica-Bold").fontSize(12).text(`${formula.name}`);
       doc.font("Helvetica").fontSize(10).fillColor("#555").text(`Formula Code: ${formula.formulaCode}  |  Version: ${formula.version}`);
-      if (formula.outputItem) {
-        doc.text(`Output Item: ${formula.outputItem.itemCode} - ${formula.outputItem.name}`);
-      }
       doc.text(`Status: ${formula.status}`);
       doc.text(`Generated: ${new Date().toLocaleString()}`);
       doc.moveDown();
@@ -926,7 +956,7 @@ router.get("/:id/msds-pdf", async (req, res, next) => {
     };
 
     const drawWatermark = () => {
-      const text = String(formula.status ?? "DRAFT").toUpperCase();
+      const text = String(formula.status ?? "IN_WORK").toUpperCase();
       doc.save();
       doc.fillColor("#94a3b8").opacity(0.12);
       doc.font("Helvetica-Bold").fontSize(64);
@@ -997,7 +1027,7 @@ router.get("/:id/msds-pdf", async (req, res, next) => {
       doc.moveDown();
     } else {
       const tableX = 40;
-      const colWidths = [90, 140, 190, 70, 75];
+      const colWidths: [number, number, number, number, number] = [90, 140, 190, 70, 75];
       const drawTableHeader = () => {
         const startY = doc.y;
         doc.rect(tableX, startY, colWidths.reduce((a, b) => a + b, 0), 18).fill("#f1f5f9");
@@ -1130,4 +1160,256 @@ router.get("/:id/msds-pdf", async (req, res, next) => {
   }
 });
 
+// GET /api/formulas/:id/audit — fetch audit log entries for this formula
+router.get("/:id/audit", async (req, res, next) => {
+  try {
+    const userId = req.user?.sub;
+    if (!userId) { res.status(401).json({ message: "Unauthorized" }); return; }
+    const formula = await prisma.formula.findUnique({ where: { id: req.params.id } });
+    if (!formula) { res.status(404).json({ message: "Formula not found" }); return; }
+    const hasAccess = await ensureFormulaAccess(req, formula.containerId, "READ");
+    if (!hasAccess) { res.status(403).json({ message: "Forbidden" }); return; }
+    const entries = await prisma.auditLog.findMany({
+      where: { entityType: "FORMULA", entityId: req.params.id },
+      orderBy: { createdAt: "desc" },
+      take: 50
+    });
+    const actorIds = [...new Set(entries.map((e) => e.actorId).filter(Boolean))] as string[];
+    const actors = actorIds.length
+      ? await prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } })
+      : [];
+    const actorMap = new Map(actors.map((a) => [a.id, a.name]));
+    res.json({
+      data: entries.map((e) => ({
+        id: e.id,
+        action: e.action,
+        actorId: e.actorId,
+        actorName: e.actorId ? (actorMap.get(e.actorId) ?? e.actorId) : "System",
+        createdAt: e.createdAt
+      }))
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ─── GET /api/formulas/:id/product-thread ─────────────────────────────────────
+
+router.get("/:id/product-thread", async (req, res, next) => {
+  try {
+    const formulaId = String(req.params.id ?? "");
+    const formula = await prisma.formula.findUnique({
+      where: { id: formulaId },
+      include: {
+        ingredients: {
+          include: {
+            item: { select: { id: true, itemCode: true, name: true, itemType: true, status: true } },
+            inputFormula: { select: { id: true, formulaCode: true, version: true, name: true } }
+          }
+        }
+      }
+    });
+
+    if (!formula) {
+      res.status(404).json({ message: "Formula not found" });
+      return;
+    }
+
+    const hasAccess = await ensureFormulaAccess(req, formula.containerId, "READ");
+    if (!hasAccess) {
+      res.status(403).json({ message: "Forbidden" });
+      return;
+    }
+
+    const [documentLinks, specifications, allChanges, allReleases, npdProjects] = await Promise.all([
+      prisma.documentLink.findMany({
+        where: { entityType: "FORMULA", entityId: formulaId },
+        include: {
+          document: { select: { id: true, docNumber: true, name: true, docType: true, status: true } }
+        }
+      }),
+      prisma.specification.findMany({
+        where: { formulaId },
+        select: { id: true, specType: true, attribute: true }
+      }),
+      prisma.changeRequest.findMany({
+        where: { affectedFormulas: { has: formula.formulaCode } },
+        select: { id: true, crNumber: true, title: true, priority: true, status: true, updatedAt: true },
+        orderBy: { updatedAt: "desc" }
+      }),
+      prisma.releaseRequest.findMany({
+        where: { targetFormulas: { has: formula.formulaCode } },
+        select: { id: true, rrNumber: true, status: true, updatedAt: true },
+        orderBy: { updatedAt: "desc" }
+      }),
+      prisma.npdProject.findMany({
+        where: { formulaId },
+        select: { id: true, projectCode: true, name: true, stage: true, status: true },
+        orderBy: { updatedAt: "desc" }
+      })
+    ]);
+
+    // Locate output FG item via FGStructure relation
+    const fgStructure = await prisma.fGStructure.findFirst({
+      where: { formulaId },
+      include: { fgItem: { select: { id: true, itemCode: true, name: true, itemType: true, status: true } } },
+      orderBy: { version: "desc" }
+    });
+    const outputItem = fgStructure?.fgItem ?? null;
+
+    // Action items
+    const actionItems: Array<{ nodeType: string; severity: "HIGH" | "MEDIUM" | "LOW"; message: string }> = [];
+
+    // Output FG item node
+    const outputItemCompleteness = outputItem ? 100 : 0;
+    const outputItemIssues: string[] = [];
+    if (!outputItem) {
+      outputItemIssues.push("No output FG item linked");
+      actionItems.push({ nodeType: "outputItem", severity: "HIGH", message: "No output Finished Good item linked to this formula." });
+    }
+
+    // Ingredients node
+    const ingredientCount = formula.ingredients.length;
+    const ingredientCompleteness = Math.min(100, ingredientCount * 20);
+    const ingredientIssues: string[] = [];
+    if (ingredientCount === 0) {
+      ingredientIssues.push("No ingredients defined");
+      actionItems.push({ nodeType: "ingredients", severity: "MEDIUM", message: "No ingredients defined for this formula." });
+    }
+
+    // Documents node
+    const documentCount = documentLinks.length;
+    const documentCompleteness = Math.min(100, documentCount * 25);
+    const documentIssues: string[] = [];
+    if (documentCount === 0) {
+      documentIssues.push("No documents linked");
+      actionItems.push({ nodeType: "documents", severity: "LOW", message: "No documents linked to this formula." });
+    }
+
+    // Specifications node
+    const specCount = specifications.length;
+    const specCompleteness = specCount > 0 ? 100 : 0;
+    const specIssues: string[] = [];
+    if (specCount === 0) {
+      specIssues.push("No specifications linked");
+    }
+
+    // Changes node
+    const openChanges = allChanges.filter((c) => !["APPROVED", "IMPLEMENTED", "REJECTED"].includes(c.status));
+    const criticalChanges = openChanges.filter((c) => c.priority === "HIGH" || c.priority === "CRITICAL");
+
+    // Releases node
+    const latestRelease = allReleases[0] ?? null;
+
+    // NPD Projects node
+    const activeNpd = npdProjects.filter((p) => p.status === "ACTIVE");
+
+    // Overall completeness (weighted average)
+    const weights = [
+      { score: outputItemCompleteness, max: 100, weight: 30 },
+      { score: ingredientCompleteness, max: 100, weight: 30 },
+      { score: documentCompleteness, max: 100, weight: 20 },
+      { score: specCompleteness, max: 100, weight: 20 }
+    ];
+    const totalWeight = weights.reduce((sum, w) => sum + w.weight, 0);
+    const overallCompleteness = Math.round(
+      weights.reduce((sum, w) => sum + (w.score / w.max) * w.weight, 0) / totalWeight * 100
+    );
+
+    res.json({
+      formula: {
+        id: formula.id,
+        formulaCode: formula.formulaCode,
+        name: formula.name,
+        version: formula.version,
+        status: formula.status
+      },
+      overallCompleteness,
+      actionItems,
+      nodes: {
+        outputItem: {
+          count: outputItem ? 1 : 0,
+          completeness: outputItemCompleteness,
+          maxScore: 100,
+          issues: outputItemIssues,
+          item: outputItem
+            ? {
+                id: outputItem.id,
+                itemCode: outputItem.itemCode,
+                name: outputItem.name,
+                itemType: outputItem.itemType,
+                status: outputItem.status
+              }
+            : null
+        },
+        ingredients: {
+          count: ingredientCount,
+          completeness: ingredientCompleteness,
+          maxScore: 100,
+          issues: ingredientIssues,
+          items: formula.ingredients.map((ing) => ({
+            id: ing.id,
+            name: ing.item?.name ?? ing.inputFormula?.name ?? "Unknown",
+            code: ing.item?.itemCode ?? ing.inputFormula?.formulaCode ?? "",
+            quantity: ing.quantity,
+            uom: ing.uom
+          }))
+        },
+        documents: {
+          count: documentCount,
+          completeness: documentCompleteness,
+          maxScore: 100,
+          issues: documentIssues,
+          items: documentLinks.map((dl) => ({
+            id: dl.document.id,
+            docNumber: dl.document.docNumber,
+            name: dl.document.name,
+            docType: dl.document.docType,
+            status: dl.document.status
+          }))
+        },
+        specifications: {
+          count: specCount,
+          completeness: specCompleteness,
+          maxScore: 100,
+          issues: specIssues,
+          items: specifications.map((s) => ({ id: s.id, specType: s.specType, attribute: s.attribute }))
+        },
+        changes: {
+          openCount: openChanges.length,
+          criticalCount: criticalChanges.length,
+          items: openChanges.slice(0, 10).map((c) => ({
+            id: c.id,
+            crNumber: c.crNumber,
+            title: c.title,
+            priority: c.priority,
+            status: c.status
+          }))
+        },
+        releases: {
+          latestStatus: latestRelease?.status ?? null,
+          items: allReleases.slice(0, 10).map((r) => ({
+            id: r.id,
+            releaseCode: r.rrNumber,
+            status: r.status
+          }))
+        },
+        npdProjects: {
+          count: npdProjects.length,
+          activeCount: activeNpd.length,
+          items: npdProjects.map((p) => ({
+            id: p.id,
+            projectCode: p.projectCode,
+            name: p.name,
+            stage: p.stage
+          }))
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;
+

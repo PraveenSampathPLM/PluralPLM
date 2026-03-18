@@ -5,7 +5,7 @@ import {
   usersRoutes,
   itemRoutes,
   formulaRoutes,
-  bomRoutes,
+  fgRoutes,
   changesRoutes,
   workflowsRoutes,
   specificationsRoutes,
@@ -16,7 +16,9 @@ import {
   containersRoutes,
   releasesRoutes,
   documentsRoutes,
-  labelsRoutes
+  labelsRoutes,
+  artworksRoutes,
+  npdRoutes
 } from "./routes/index.js";
 import { authenticate } from "./middleware/auth.middleware.js";
 import { errorMiddleware } from "./middleware/error.middleware.js";
@@ -35,7 +37,7 @@ export function createApp() {
   app.use("/api/users", authenticate, usersRoutes);
   app.use("/api/items", authenticate, itemRoutes);
   app.use("/api/formulas", authenticate, formulaRoutes);
-  app.use("/api/bom", authenticate, bomRoutes);
+  app.use("/api/fg", authenticate, fgRoutes);
   app.use("/api/changes", authenticate, changesRoutes);
   app.use("/api/releases", authenticate, releasesRoutes);
   app.use("/api/workflows", authenticate, workflowsRoutes);
@@ -47,6 +49,8 @@ export function createApp() {
   app.use("/api/containers", authenticate, containersRoutes);
   app.use("/api/documents", authenticate, documentsRoutes);
   app.use("/api/labels", authenticate, labelsRoutes);
+  app.use("/api/artworks", authenticate, artworksRoutes);
+  app.use("/api/npd", authenticate, npdRoutes);
 
   app.use(errorMiddleware);
 

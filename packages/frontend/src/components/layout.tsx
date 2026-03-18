@@ -46,6 +46,18 @@ function IconSearch({ className }: { className?: string }): JSX.Element {
   );
 }
 
+function IconChart({ className }: { className?: string }): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={className}>
+      <path d="M4 20h16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      <path d="M7 20v-6" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      <path d="M12 20v-10" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      <path d="M17 20v-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      <path d="M7 11l5-4 5 6" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function IconTasks({ className }: { className?: string }): JSX.Element {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={className}>
@@ -123,12 +135,22 @@ const navGroups: NavGroup[] = [
     label: "Home",
     items: [
       { to: "/", label: "Dashboard", icon: IconHome },
-      { to: "/search", label: "Advanced Search", icon: IconSearch }
+      { to: "/search", label: "Advanced Search", icon: IconSearch },
+      { to: "/reports", label: "Reports", icon: IconChart }
     ]
   },
   {
     label: "Execution",
     items: [
+      {
+        to: "/npd",
+        label: "NPD Projects",
+        icon: (props) => (
+          <svg viewBox="0 0 24 24" aria-hidden="true" className={props.className}>
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        )
+      },
       { to: "/tasks", label: "My Tasks", icon: IconTasks },
       { to: "/changes", label: "Changes", icon: (props) => <EntityIcon kind="change" {...props} /> },
       { to: "/releases", label: "Releases", icon: (props) => <EntityIcon kind="release" {...props} /> }
@@ -139,7 +161,8 @@ const navGroups: NavGroup[] = [
     items: [
       { to: "/items", label: "Items", icon: (props) => <EntityIcon kind="item" {...props} /> },
       { to: "/formulas", label: "Formulas", icon: (props) => <EntityIcon kind="formula" {...props} /> },
-      { to: "/bom", label: "BOM", icon: (props) => <EntityIcon kind="bom" {...props} /> }
+      { to: "/fg", label: "FG Structures", icon: (props) => <EntityIcon kind="bom" {...props} /> },
+      { to: "/artworks", label: "Artworks", icon: (props) => <EntityIcon kind="artwork" {...props} /> }
     ]
   },
   {
@@ -147,13 +170,13 @@ const navGroups: NavGroup[] = [
     items: [
       { to: "/documents", label: "Documents", icon: (props) => <EntityIcon kind="document" {...props} /> },
       { to: "/specifications", label: "Specifications", icon: IconFolder },
-      { to: "/containers", label: "Containers", icon: IconFolder }
+      { to: "/labeling", label: "Labeling", icon: IconTag }
     ]
   },
   {
     label: "Governance",
     items: [
-      { to: "/labeling", label: "Labeling", icon: IconTag },
+      { to: "/containers", label: "Containers", icon: IconFolder },
       { to: "/configuration", label: "Configuration", icon: IconSettings }
     ]
   }
@@ -163,12 +186,15 @@ const breadcrumbLabelMap: Record<string, string> = {
   items: "Items",
   formulas: "Formulas",
   labeling: "Labeling",
-  bom: "BOM",
+  fg: "Finished Good",
+  artworks: "Artworks",
+  item: "Item",
   changes: "Changes",
   releases: "Releases",
   tasks: "Tasks",
   documents: "Documents",
   search: "Advanced Search",
+  reports: "Reports",
   specifications: "Specifications",
   containers: "Containers",
   configuration: "Configuration",
@@ -178,18 +204,21 @@ const breadcrumbLabelMap: Record<string, string> = {
   attributes: "Attributes",
   uoms: "Units of measure",
   mail: "Mail",
+  "server-stats": "Server Stats",
   workflows: "Workflows",
-  help: "Help Center"
+  help: "Help Center",
+  npd: "NPD Projects"
 };
 
 const breadcrumbDetailPrefixMap: Record<string, string> = {
   items: "Item",
   formulas: "Formula",
-  bom: "BOM",
+  fg: "Finished Good",
   changes: "Change",
   releases: "Release",
   tasks: "Task",
-  documents: "Document"
+  documents: "Document",
+  npd: "NPD"
 };
 
 function breadcrumbLabelForSegment(segment: string, prevSegment?: string): string {
@@ -250,14 +279,23 @@ export function AppLayout(): JSX.Element {
     return crumbs;
   }, [location.pathname]);
   useEffect(() => {
-    if (!selectedContainerId) {
+    if (!containers.data?.data) {
       return;
     }
-    const exists = Boolean(containers.data?.data.some((container) => container.id === selectedContainerId));
-    if (!exists && containers.data) {
+    if (selectedContainerId) {
+      const exists = containers.data.data.some((container) => container.id === selectedContainerId);
+      if (exists) {
+        return;
+      }
       setSelectedContainerId("");
+      return;
     }
-  }, [containers.data, selectedContainerId, setSelectedContainerId]);
+    // Default to FOOD-CORE when no container is selected so seeded F&B data is visible immediately.
+    const foodContainer = containers.data.data.find((container) => container.code === "FOOD-CORE");
+    if (foodContainer) {
+      setSelectedContainerId(foodContainer.id);
+    }
+  }, [containers.data?.data, selectedContainerId, setSelectedContainerId]);
 
   useEffect(() => {
     if (!location.pathname.startsWith("/tasks")) {

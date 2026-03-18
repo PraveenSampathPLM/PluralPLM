@@ -28,7 +28,7 @@ interface WorkflowDefinitionRecord {
   actions?: unknown;
 }
 
-type Transition = { from: string; to: string; action: string };
+type Transition = { from: string; to: string; action: string; label?: string; style?: string };
 
 type AssignmentInput = {
   roles: string[];
@@ -36,6 +36,20 @@ type AssignmentInput = {
   entryRule?: string;
   description?: string;
 };
+
+function normalizeAssignment(entry: Partial<AssignmentInput> | undefined): AssignmentInput {
+  const next: AssignmentInput = { roles: Array.isArray(entry?.roles) ? entry.roles : [] };
+  if (typeof entry?.slaHours === "number") {
+    next.slaHours = entry.slaHours;
+  }
+  if (typeof entry?.entryRule === "string") {
+    next.entryRule = entry.entryRule;
+  }
+  if (typeof entry?.description === "string") {
+    next.description = entry.description;
+  }
+  return next;
+}
 
 interface ContainerRoleRecord {
   id: string;
@@ -50,35 +64,31 @@ type WorkflowMeta = {
 const changeTemplate = {
   name: "Change Management",
   entityType: "CHANGE_REQUEST" as const,
-  states: ["NEW", "ASSESSMENT", "REVIEW", "APPROVAL", "IMPLEMENTATION"],
+  states: ["IN_WORK", "UNDER_REVIEW", "RELEASED"],
   transitions: [
-    { from: "NEW", to: "ASSESSMENT", action: "SUBMIT" },
-    { from: "ASSESSMENT", to: "REVIEW", action: "FORWARD" },
-    { from: "REVIEW", to: "APPROVAL", action: "RECOMMEND" },
-    { from: "APPROVAL", to: "IMPLEMENTATION", action: "APPROVE" }
+    { from: "IN_WORK", to: "UNDER_REVIEW", action: "SUBMIT" },
+    { from: "UNDER_REVIEW", to: "IN_WORK", action: "REQUEST_CHANGES" },
+    { from: "UNDER_REVIEW", to: "RELEASED", action: "APPROVE" }
   ],
   assignments: {
-    NEW: { roles: [] },
-    ASSESSMENT: { roles: ["QA Manager"] },
-    REVIEW: { roles: ["Regulatory Affairs"] },
-    APPROVAL: { roles: ["PLM Admin"] },
-    IMPLEMENTATION: { roles: ["Production Manager"] }
+    IN_WORK: { roles: [] },
+    UNDER_REVIEW: { roles: ["QA Manager"] },
+    RELEASED: { roles: ["PLM Admin"] }
   } as Record<string, AssignmentInput>
 };
 
 const releaseTemplate = {
   name: "Release Management",
   entityType: "RELEASE_REQUEST" as const,
-  states: ["NEW", "REVIEW", "APPROVAL", "RELEASED"],
+  states: ["IN_WORK", "UNDER_REVIEW", "RELEASED"],
   transitions: [
-    { from: "NEW", to: "REVIEW", action: "SUBMIT" },
-    { from: "REVIEW", to: "APPROVAL", action: "APPROVE" },
-    { from: "APPROVAL", to: "RELEASED", action: "RELEASE" }
+    { from: "IN_WORK", to: "UNDER_REVIEW", action: "SUBMIT" },
+    { from: "UNDER_REVIEW", to: "IN_WORK", action: "REQUEST_CHANGES" },
+    { from: "UNDER_REVIEW", to: "RELEASED", action: "RELEASE" }
   ],
   assignments: {
-    NEW: { roles: [] },
-    REVIEW: { roles: ["QA Manager"] },
-    APPROVAL: { roles: ["Regulatory Affairs"] },
+    IN_WORK: { roles: [] },
+    UNDER_REVIEW: { roles: ["Regulatory Affairs"] },
     RELEASED: { roles: ["PLM Admin"] }
   } as Record<string, AssignmentInput>
 };
@@ -97,13 +107,7 @@ function extractAssignments(definition: WorkflowDefinitionRecord, states: string
   const rawAssignments = actions?.stateAssignments ?? {};
   const assignments: Record<string, AssignmentInput> = {};
   for (const state of states) {
-    const entry = rawAssignments[state] ?? {};
-    assignments[state] = {
-      roles: Array.isArray(entry.roles) ? entry.roles : [],
-      slaHours: typeof entry.slaHours === "number" ? entry.slaHours : undefined,
-      entryRule: typeof entry.entryRule === "string" ? entry.entryRule : "",
-      description: typeof entry.description === "string" ? entry.description : ""
-    };
+    assignments[state] = normalizeAssignment(rawAssignments[state]);
   }
   return assignments;
 }
@@ -131,7 +135,7 @@ export function WorkflowsPage(): JSX.Element {
   const [workflowMeta, setWorkflowMeta] = useState<WorkflowMeta>({ status: "DRAFT" });
 
   const [newState, setNewState] = useState("");
-  const [newTransition, setNewTransition] = useState<Transition>({ from: "", to: "", action: "" });
+  const [newTransition, setNewTransition] = useState<Transition>({ from: "", to: "", action: "", label: "", style: "default" });
   const [entityFilter, setEntityFilter] = useState<"ALL" | "CHANGE_REQUEST" | "RELEASE_REQUEST">("ALL");
   const [search, setSearch] = useState("");
   const [showArchived, setShowArchived] = useState(false);
@@ -200,13 +204,7 @@ export function WorkflowsPage(): JSX.Element {
 
       const assignments: Record<string, AssignmentInput> = {};
       for (const state of states) {
-        const entry = stateAssignments[state] ?? { roles: [] };
-        assignments[state] = {
-          roles: entry.roles ?? [],
-          slaHours: entry.slaHours,
-          entryRule: entry.entryRule,
-          description: entry.description
-        };
+        assignments[state] = normalizeAssignment(stateAssignments[state]);
       }
 
       const payload = {
@@ -298,7 +296,7 @@ export function WorkflowsPage(): JSX.Element {
     setDefinitionName(definition.name);
     setDefinitionEntity(definition.entityType as "CHANGE_REQUEST" | "RELEASE_REQUEST");
     setVisualStates(states);
-    setVisualTransitions(transitions as Transition[]);
+    setVisualTransitions((transitions as Transition[]).map((t) => ({ from: t.from, to: t.to, action: t.action, label: t.label ?? "", style: t.style ?? "default" })));
     setStateAssignments(extractAssignments(definition, states));
     setWorkflowMeta(meta);
   }
@@ -508,7 +506,10 @@ export function WorkflowsPage(): JSX.Element {
                             const parsed = Number(event.target.value);
                             setStateAssignments((prev) => ({
                               ...prev,
-                              [state]: { ...prev[state], slaHours: Number.isFinite(parsed) ? parsed : undefined }
+                              [state]:
+                                Number.isFinite(parsed)
+                                  ? { ...normalizeAssignment(prev[state]), slaHours: parsed }
+                                  : normalizeAssignment(prev[state])
                             }));
                           }}
                           placeholder="SLA Hours (optional)"
@@ -519,7 +520,7 @@ export function WorkflowsPage(): JSX.Element {
                           onChange={(event) =>
                             setStateAssignments((prev) => ({
                               ...prev,
-                              [state]: { ...prev[state], entryRule: event.target.value }
+                              [state]: { ...normalizeAssignment(prev[state]), entryRule: event.target.value }
                             }))
                           }
                           placeholder="Entry Rule (optional)"
@@ -530,7 +531,7 @@ export function WorkflowsPage(): JSX.Element {
                           onChange={(event) =>
                             setStateAssignments((prev) => ({
                               ...prev,
-                              [state]: { ...prev[state], description: event.target.value }
+                              [state]: { ...normalizeAssignment(prev[state]), description: event.target.value }
                             }))
                           }
                           placeholder="Task Description (optional)"
@@ -573,9 +574,27 @@ export function WorkflowsPage(): JSX.Element {
                 <input
                   value={newTransition.action}
                   onChange={(event) => setNewTransition({ ...newTransition, action: event.target.value })}
-                  placeholder="Action"
+                  placeholder="Action (internal key)"
                   className="rounded border border-slate-300 px-2 py-1 text-sm"
                 />
+              </div>
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                <input
+                  value={newTransition.label ?? ""}
+                  onChange={(event) => setNewTransition({ ...newTransition, label: event.target.value })}
+                  placeholder="Button Label (e.g. Approve)"
+                  className="rounded border border-slate-300 px-2 py-1 text-sm"
+                />
+                <select
+                  value={newTransition.style ?? "default"}
+                  onChange={(event) => setNewTransition({ ...newTransition, style: event.target.value })}
+                  className="rounded border border-slate-300 px-2 py-1 text-sm"
+                >
+                  <option value="default">Default (Blue)</option>
+                  <option value="success">Success (Green)</option>
+                  <option value="warning">Warning (Orange)</option>
+                  <option value="danger">Danger (Red)</option>
+                </select>
               </div>
               <button
                 type="button"
@@ -584,7 +603,7 @@ export function WorkflowsPage(): JSX.Element {
                     return;
                   }
                   setVisualTransitions((prev) => [...prev, { ...newTransition }]);
-                  setNewTransition({ from: "", to: "", action: "" });
+                  setNewTransition({ from: "", to: "", action: "", label: "", style: "default" });
                 }}
                 className="mt-2 rounded border border-slate-300 bg-white px-3 py-1 text-xs"
               >
@@ -598,7 +617,7 @@ export function WorkflowsPage(): JSX.Element {
                     onClick={() => setVisualTransitions((prev) => prev.filter((_, idx) => idx !== index))}
                     className="block w-full rounded border border-slate-200 bg-slate-50 px-2 py-1 text-left"
                   >
-                    {transition.from} {"->"} {transition.to} ({transition.action}) x
+                    {transition.from} {"->"} {transition.to} · <strong>{transition.label || transition.action}</strong> [{transition.style ?? "default"}] ×
                   </button>
                 ))}
                 {visualTransitions.length === 0 ? <p className="text-xs text-slate-400">No transitions defined.</p> : null}

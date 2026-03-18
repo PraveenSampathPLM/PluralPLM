@@ -26,10 +26,14 @@ async function login(): Promise<string> {
 }
 
 async function getFirstId(token: string, endpoint: string): Promise<string | null> {
-  const data = await fetchJson<{ data: Array<{ id: string }> }>(`${API_URL}${endpoint}`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  return data.data?.[0]?.id ?? null;
+  try {
+    const data = await fetchJson<{ data: Array<{ id: string }> }>(`${API_URL}${endpoint}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return data.data?.[0]?.id ?? null;
+  } catch {
+    return null;
+  }
 }
 
 async function getContainerId(token: string): Promise<string | null> {
@@ -42,27 +46,40 @@ async function getContainerId(token: string): Promise<string | null> {
 async function main(): Promise<void> {
   const token = await login();
   const containerId = await getContainerId(token);
-
-  const [itemId, formulaId, bomId, changeId, releaseId, docId] = await Promise.all([
+  const [itemId, formulaId, changeId, releaseId, docId, artworkId] = await Promise.all([
     getFirstId(token, "/items"),
     getFirstId(token, "/formulas"),
-    getFirstId(token, "/bom"),
     getFirstId(token, "/changes"),
     getFirstId(token, "/releases"),
-    getFirstId(token, "/documents")
+    getFirstId(token, "/documents"),
+    getFirstId(token, "/artworks")
   ]);
 
-  const routes: Array<{ filename: string; path: string }> = [
+  const routes: Array<{ filename: string; path: string; prepare?: (page: import("playwright").Page) => Promise<void> }> = [
     { filename: "help-dashboard.png", path: "/" },
     { filename: "help-materials-list.png", path: "/items" },
     ...(itemId ? [{ filename: "help-material-detail.png", path: `/items/${itemId}` }] : []),
     { filename: "help-formulation-list.png", path: "/formulas" },
     ...(formulaId ? [{ filename: "help-formulation-detail.png", path: `/formulas/${formulaId}` }] : []),
-    { filename: "help-bom-list.png", path: "/bom" },
-    ...(bomId ? [{ filename: "help-bom-detail.png", path: `/bom/${bomId}` }] : []),
     { filename: "help-specifications.png", path: "/specifications" },
     { filename: "help-documents.png", path: "/documents" },
     ...(docId ? [{ filename: "help-document-detail.png", path: `/documents/${docId}` }] : []),
+    { filename: "help-artworks.png", path: "/artworks" },
+    ...(artworkId
+      ? [
+          {
+            filename: "help-artwork-detail.png",
+            path: `/artworks/${artworkId}`,
+            prepare: async (page) => {
+              const tab = page.getByRole("button", { name: "Proofing" });
+              if ((await tab.count()) > 0) {
+                await tab.first().click();
+                await page.waitForTimeout(700);
+              }
+            }
+          }
+        ]
+      : []),
     { filename: "help-changes.png", path: "/changes" },
     ...(changeId ? [{ filename: "help-change-detail.png", path: `/changes/${changeId}` }] : []),
     { filename: "help-releases.png", path: "/releases" },
@@ -88,6 +105,9 @@ async function main(): Promise<void> {
     const page = await context.newPage();
     const url = `${BASE_URL}${route.path}`;
     await page.goto(url, { waitUntil: "networkidle" });
+    if (route.prepare) {
+      await route.prepare(page);
+    }
     await page.waitForTimeout(800);
     const filePath = path.join(outputDir, route.filename);
     await page.screenshot({ path: filePath, fullPage: true });

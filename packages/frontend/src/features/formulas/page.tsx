@@ -1,11 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { ObjectActionsMenu, type ObjectActionKey } from "@/components/object-actions-menu";
 import { useContainerStore } from "@/store/container.store";
 import { STANDARD_UOMS } from "@/lib/uom";
 import { EntityIcon } from "@/components/entity-icon";
+import { StatusBadge } from "@/components/status-badge";
+import { toast } from "sonner";
 
 type RecipeType = "FORMULA_RECIPE" | "FINISHED_GOOD_RECIPE";
 type InputSourceType = "ITEM" | "FORMULA";
@@ -92,10 +94,20 @@ interface ItemOption {
 }
 
 export function FormulasPage(): JSX.Element {
+ const currentUserRole = (JSON.parse(localStorage.getItem("plm_user") || "{}") as { role?: string }).role ?? "";
+ const isAdmin = ["System Admin", "PLM Admin", "Container Admin"].includes(currentUserRole);
  const { selectedContainerId } = useContainerStore();
  const queryClient = useQueryClient();
- const [message, setMessage] = useState("");
+ const [searchParams] = useSearchParams();
+ const fromNpdProjectId = searchParams.get("fromNpdProjectId") ?? "";
+ const fromNpdProjectCode = searchParams.get("fromNpdProjectCode") ?? "";
+ const fromNpdProjectName = searchParams.get("fromNpdProjectName") ?? "";
+ const [createOpen, setCreateOpen] = useState(false);
+ const createButtonRef = useRef<HTMLButtonElement | null>(null);
+ const createPanelRef = useRef<HTMLDivElement | null>(null);
  const [selectedFormulaId, setSelectedFormulaId] = useState<string>("");
+ const [search, setSearch] = useState("");
+ const [page, setPage] = useState(1);
  const [form, setForm] = useState({
   formulaCode: "",
   version: "1",
@@ -109,6 +121,14 @@ export function FormulasPage(): JSX.Element {
  const [ingredients, setIngredients] = useState<IngredientRow[]>([
   { sourceType: "ITEM", sourceId: "", quantity: "", uom: "kg", percentage: "", additionSequence: "1" }
  ]);
+
+ // Auto-open create panel when arriving from an NPD project
+ useEffect(() => {
+  if (fromNpdProjectId) {
+   setCreateOpen(true);
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [fromNpdProjectId]);
 
  const items = useQuery({
   queryKey: ["formula-item-options"],
@@ -126,11 +146,11 @@ export function FormulasPage(): JSX.Element {
  });
 
  const { data, isLoading } = useQuery({
-  queryKey: ["formulas", selectedContainerId],
+  queryKey: ["formulas", search, page, selectedContainerId],
   queryFn: async () =>
    (
     await api.get<FormulaResponse>("/formulas", {
-     params: { ...(selectedContainerId ? { containerId: selectedContainerId } : {}) }
+     params: { ...(selectedContainerId ? { containerId: selectedContainerId } : {}), search, page, pageSize: 10 }
     })
    ).data
  });
@@ -196,7 +216,7 @@ export function FormulasPage(): JSX.Element {
     throw new Error("Finished Good requires an output finished good item");
    }
 
-   await api.post("/formulas", {
+   const createdFormula = (await api.post<{ id: string; formulaCode: string }>("/formulas", {
     formulaCode: form.formulaCode || undefined,
     version: Number(form.version),
     recipeType: form.recipeType,
@@ -205,12 +225,23 @@ export function FormulasPage(): JSX.Element {
     batchSize: Number(form.batchSize),
     batchUom: form.batchUom,
     containerId: selectedContainerId,
-    status: "DRAFT",
+    status: "IN_WORK",
     ingredients: ingredientData
-   });
+   })).data;
+   return createdFormula;
   },
-  onSuccess: async () => {
-   setMessage("Formulation structure created successfully.");
+  onSuccess: async (createdFormula) => {
+   toast.success("Formulation structure created successfully.");
+   // If arriving from an NPD project, auto-link this formula back to the project
+   if (fromNpdProjectId) {
+    try {
+     await api.patch(`/npd/projects/${fromNpdProjectId}`, { formulaId: createdFormula.id });
+     toast.success(`Formula linked to NPD project ${fromNpdProjectCode}`);
+     await queryClient.invalidateQueries({ queryKey: ["npd-project", fromNpdProjectId] });
+    } catch {
+     toast.error("Formula created but failed to link to NPD project — link it manually.");
+    }
+   }
    setForm({
     formulaCode: "",
     version: "1",
@@ -226,7 +257,7 @@ export function FormulasPage(): JSX.Element {
    await queryClient.invalidateQueries({ queryKey: ["next-formula-number"] });
   },
   onError: (error) => {
-   setMessage(error instanceof Error ? error.message : "Create failed");
+   toast.error(error instanceof Error ? error.message : "Create failed");
   }
  });
 
@@ -234,34 +265,43 @@ export function FormulasPage(): JSX.Element {
   try {
    if (action === "checkout") {
     await api.post(`/formulas/${formula.id}/check-out`);
-    setMessage(`Formulation ${formula.formulaCode} checked out.`);
+    toast.success(`Formulation ${formula.formulaCode} checked out.`);
    } else if (action === "checkin") {
     await api.post(`/formulas/${formula.id}/check-in`);
-    setMessage(`Formulation ${formula.formulaCode} checked in.`);
+    toast.success(`Formulation ${formula.formulaCode} checked in.`);
    } else if (action === "copy") {
     await api.post(`/formulas/${formula.id}/copy`);
-    setMessage(`Copy created for ${formula.formulaCode}.`);
+    toast.success(`Copy created for ${formula.formulaCode}.`);
    } else if (action === "revise") {
     await api.post(`/formulas/${formula.id}/revise`);
-    setMessage(`Revision created for ${formula.formulaCode}.`);
+    toast.success(`Revision created for ${formula.formulaCode}.`);
    } else if (action === "delete") {
-    if (!window.confirm(`Delete recipe ${formula.formulaCode} v${formula.version}?`)) {
+    let usageWarning = "";
+    try {
+      const links = await api.get<{ ingredients: unknown[]; fgUsages: unknown[] }>(`/formulas/${formula.id}/links`);
+      const ingredientCount = links.data?.ingredients?.length ?? 0;
+      const fgCount = links.data?.fgUsages?.length ?? 0;
+      if (ingredientCount > 0 || fgCount > 0) {
+        usageWarning = `\n\nWarning: This formula has ${ingredientCount} ingredient(s) and is linked to ${fgCount} FG structure(s). Deleting it may break those records.`;
+      }
+    } catch { /* ignore */ }
+    if (!window.confirm(`Delete recipe ${formula.formulaCode} v${formula.version}?${usageWarning}`)) {
      return;
     }
     await api.delete(`/formulas/${formula.id}`);
     if (selectedFormulaId === formula.id) {
      setSelectedFormulaId("");
     }
-    setMessage(`Formulation ${formula.formulaCode} deleted.`);
+    toast.success(`Formulation ${formula.formulaCode} deleted.`);
    }
    await queryClient.invalidateQueries({ queryKey: ["formulas"] });
    await queryClient.invalidateQueries({ queryKey: ["next-formula-number"] });
   } catch (error) {
-   setMessage(error instanceof Error ? error.message : "Action failed");
+   toast.error(error instanceof Error ? error.message : "Action failed");
   }
  }
 
- const formulaColumnDefs: Record<string, { label: string; render: (formula: Formula) => string }> = {
+ const formulaColumnDefs: Record<string, { label: string; render: (formula: Formula) => ReactNode }> = {
   formulaCode: { label: "Formulation Code", render: (formula) => formula.formulaCode },
   revisionLabel: { label: "Revision", render: (formula) => formula.revisionLabel ?? "1.1" },
   name: { label: "Name", render: (formula) => formula.name },
@@ -277,7 +317,7 @@ export function FormulasPage(): JSX.Element {
      : "Formula"
   },
   version: { label: "Version", render: (formula) => String(formula.version) },
-  status: { label: "Status", render: (formula) => formula.status },
+  status: { label: "Status", render: (formula) => <StatusBadge status={formula.status} /> },
   updatedAt: { label: "Updated", render: (formula) => new Date(formula.updatedAt).toLocaleDateString() }
  };
  const configuredColumns = (config.data?.listColumns?.FORMULA ?? ["formulaCode", "revisionLabel", "name", "recipeType", "status"]).filter(
@@ -299,10 +339,61 @@ export function FormulasPage(): JSX.Element {
   setIngredients((previous) => (previous.length === 1 ? previous : previous.filter((_, rowIndex) => rowIndex !== index)));
  }
 
+ useEffect(() => {
+  if (!createOpen) {
+   return;
+  }
+  const onPointerDown = (event: MouseEvent) => {
+   const target = event.target as Node | null;
+   if (!target) {
+    return;
+   }
+   if (createPanelRef.current?.contains(target)) {
+    return;
+   }
+   if (createButtonRef.current?.contains(target)) {
+    return;
+   }
+   setCreateOpen(false);
+  };
+  const onEscape = (event: KeyboardEvent) => {
+   if (event.key === "Escape") {
+    setCreateOpen(false);
+    setForm({ formulaCode: "", version: "1", recipeType: "FORMULA_RECIPE", outputItemId: "", name: "", batchSize: "100", batchUom: "kg", containerId: selectedContainerId });
+    setIngredients([{ sourceType: "ITEM", sourceId: "", quantity: "", uom: "kg", percentage: "", additionSequence: "1" }]);
+   }
+  };
+  document.addEventListener("mousedown", onPointerDown);
+  document.addEventListener("keydown", onEscape);
+  return () => {
+   document.removeEventListener("mousedown", onPointerDown);
+   document.removeEventListener("keydown", onEscape);
+  };
+ }, [createOpen]);
+
  return (
   <div className="space-y-4 rounded-xl bg-white p-4">
-   <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+   <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+    <button
+     ref={createButtonRef}
+     type="button"
+     onClick={() => setCreateOpen((prev) => !prev)}
+     className="w-full rounded-lg border border-primary bg-primary px-4 py-3 text-left text-sm font-semibold text-white shadow-sm transition hover:bg-[#174766]"
+    >
+     + Create Formulation
+    </button>
+    <p className="mt-2 text-xs text-slate-500">Auto-number preview: {nextFormula.data?.value ?? "Loading..."}</p>
+   </div>
+
+   {createOpen ? (
+   <div ref={createPanelRef} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
     <h3 className="mb-1 font-heading text-lg">Create Formulation</h3>
+    {fromNpdProjectId && (
+     <div className="mb-3 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+      <span className="text-base">🔗</span>
+      <span>Creating Formula for NPD Project <strong>{fromNpdProjectCode}</strong> — {fromNpdProjectName}. After creation it will be automatically linked.</span>
+     </div>
+    )}
     <p className="mb-3 text-xs text-slate-500">
      Leave Formulation Code blank for auto-number: {nextFormula.data?.value ?? "Loading..."}
     </p>
@@ -484,14 +575,22 @@ export function FormulasPage(): JSX.Element {
       {createFormula.isPending ? "Creating..." : "Create Formulation"}
      </button>
     </div>
-
-    {message ? <p className="mt-2 text-sm text-slate-700">{message}</p> : null}
    </div>
+   ) : null}
 
-   <h2 className="mb-4 font-heading text-xl">Formulation Management</h2>
+   <div className="flex items-center justify-between">
+    <h2 className="font-heading text-xl">Formulation Management</h2>
+    <input
+     value={search}
+     onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+     placeholder="Search formulations"
+     className="w-64 rounded border border-slate-300 px-3 py-2 text-sm"
+    />
+   </div>
    {isLoading ? (
     <p>Loading formulations...</p>
    ) : (
+    <>
     <table className="w-full text-left text-sm">
      <thead>
       <tr className="border-b border-slate-200 text-slate-500">
@@ -506,7 +605,7 @@ export function FormulasPage(): JSX.Element {
       </tr>
      </thead>
      <tbody>
-      {data?.data.map((formula) => (
+      {(data?.data ?? []).map((formula) => (
        <tr key={formula.id} className="border-b border-slate-100">
         <td className="py-2 text-slate-500">
           <EntityIcon kind="formula" />
@@ -542,13 +641,41 @@ export function FormulasPage(): JSX.Element {
           Open
          </Link>
          <span className="ml-2 inline-block">
-          <ObjectActionsMenu onAction={(action) => void runFormulaAction(formula, action)} />
+          <ObjectActionsMenu
+            onAction={(action) => void runFormulaAction(formula, action)}
+            actions={[
+              { key: "checkout", label: "Check Out" },
+              { key: "checkin", label: "Check In" },
+              { key: "revise", label: "Revise" },
+              { key: "copy", label: "Save as Copy" },
+              ...(isAdmin ? [{ key: "delete" as const, label: "Delete", danger: true }] : [])
+            ]}
+          />
          </span>
         </td>
        </tr>
       ))}
      </tbody>
     </table>
+    {(data?.data ?? []).length === 0 && !isLoading ? (
+     <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+      <p className="font-medium">No formulations found</p>
+      <p className="mt-1 text-xs">{search ? "Try a different search term" : "Click \"+ Create Formulation\" above to get started"}</p>
+     </div>
+    ) : null}
+    {(data?.total ?? 0) > (data?.pageSize ?? 10) ? (
+     <div className="flex items-center justify-between text-sm text-slate-600">
+      <p>Total: {data?.total ?? 0} records</p>
+      <div className="flex items-center gap-2">
+       <button type="button" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="rounded border border-slate-300 px-2 py-1 disabled:opacity-60">Prev</button>
+       <span>Page {page} / {Math.max(1, Math.ceil((data?.total ?? 0) / (data?.pageSize ?? 10)))}</span>
+       <button type="button" disabled={page >= Math.max(1, Math.ceil((data?.total ?? 0) / (data?.pageSize ?? 10)))} onClick={() => setPage((p) => p + 1)} className="rounded border border-slate-300 px-2 py-1 disabled:opacity-60">Next</button>
+      </div>
+     </div>
+    ) : (
+     <p className="text-sm text-slate-500">Total: {data?.total ?? 0} records</p>
+    )}
+    </>
    )}
 
    {selectedFormulaId ? (
@@ -619,8 +746,8 @@ export function FormulasPage(): JSX.Element {
           <div className="rounded border border-slate-200 bg-white p-3 text-sm">
            <p className="mb-1 font-medium">Linked BOMs ({formulaLinks.data?.boms.length ?? 0})</p>
            {formulaLinks.data?.boms.map((bom) => (
-            <Link key={bom.id} to={`/bom/${bom.id}`} className="block text-primary hover:underline">
-             {bom.bomCode} v{bom.version} ({bom.type}) - Lines: {bom.lines.length}
+            <Link key={bom.id} to={`/fg/${bom.id}`} className="block text-primary hover:underline">
+             {bom.bomCode} v{bom.version} ({bom.type}){Array.isArray(bom.lines) ? ` - Lines: ${bom.lines.length}` : ""}
             </Link>
            ))}
           </div>

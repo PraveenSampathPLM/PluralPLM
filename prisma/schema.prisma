@@ -24,23 +24,24 @@ enum ItemType {
 }
 
 enum LifecycleStatus {
-  DRAFT
-  ACTIVE
-  OBSOLETE
-  UNDER_CHANGE
-}
-
-enum FormulaStatus {
-  DRAFT
-  IN_REVIEW
-  APPROVED
+  IN_WORK
+  UNDER_REVIEW
   RELEASED
   OBSOLETE
 }
 
-enum RecipeType {
-  FORMULA_RECIPE
-  FINISHED_GOOD_RECIPE
+enum FormulaStatus {
+  IN_WORK
+  UNDER_REVIEW
+  RELEASED
+  OBSOLETE
+}
+
+enum FGStatus {
+  IN_WORK
+  UNDER_REVIEW
+  RELEASED
+  OBSOLETE
 }
 
 enum ChangeType {
@@ -55,6 +56,11 @@ enum ChangePriority {
   MEDIUM
   HIGH
   CRITICAL
+}
+
+enum ChangeTargetAction {
+  RELEASE
+  OBSOLETE
 }
 
 enum ChangeStatus {
@@ -92,22 +98,73 @@ enum DocumentType {
   OTHER
 }
 
-enum BomType {
-  FG_BOM
-  FML_BOM
-}
-
-enum BomStatus {
+enum ArtworkStatus {
   DRAFT
-  IN_REVIEW
+  REVIEW
   APPROVED
   RELEASED
   OBSOLETE
 }
 
+enum ArtworkComponentType {
+  LABEL
+  CARTON
+  LEAFLET
+  SHRINK
+  SLEEVE
+  OTHER
+}
+
+enum ArtworkFileType {
+  SOURCE
+  PROOF
+  FINAL
+}
+
+enum AnnotationStatus {
+  OPEN
+  RESOLVED
+  REJECTED
+}
+
 enum ContainerStatus {
   ACTIVE
   ARCHIVED
+}
+
+enum TaskStatus {
+  OPEN
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum NpdStage {
+  DISCOVERY
+  FEASIBILITY
+  DEVELOPMENT
+  VALIDATION
+  LAUNCH
+}
+
+enum NpdStatus {
+  ACTIVE
+  ON_HOLD
+  KILLED
+  COMPLETED
+}
+
+enum GateDecision {
+  GO
+  KILL
+  HOLD
+  RECYCLE
 }
 
 model Organization {
@@ -124,7 +181,6 @@ model Plant {
   name           String
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
-  boms           BOM[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 }
@@ -154,102 +210,122 @@ model NumberSequence {
 }
 
 model User {
-  id             String        @id @default(cuid())
-  email          String        @unique
-  name           String
-  passwordHash   String
-  roleId         String
-  role           Role          @relation(fields: [roleId], references: [id])
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id])
-  formulas       Formula[]
+  id                  String               @id @default(cuid())
+  email               String               @unique
+  name                String
+  passwordHash        String
+  roleId              String
+  role                Role                 @relation(fields: [roleId], references: [id])
+  organizationId      String?
+  organization        Organization?        @relation(fields: [organizationId], references: [id])
+  formulas            Formula[]
   containerMemberships ContainerMembership[]
-  ownedContainers ProductContainer[] @relation("ContainerOwner")
-  requestedCr    ChangeRequest[] @relation("RequestedBy")
-  requestedRelease ReleaseRequest[] @relation("RequestedReleaseBy")
-  documents      Document[]
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  ownedContainers     ProductContainer[]   @relation("ContainerOwner")
+  requestedCr         ChangeRequest[]      @relation("RequestedBy")
+  requestedRelease    ReleaseRequest[]     @relation("RequestedReleaseBy")
+  documents           Document[]
+  artworks            Artwork[]
+  artworkFiles        ArtworkFile[]
+  artworkAnnotations  ArtworkAnnotation[]
+  assignedTasks       Task[]               @relation("TaskAssignee")
+  completedTasks      Task[]               @relation("TaskCompleter")
+  checkedOutItems        Item[]               @relation("ItemCheckout")
+  checkedOutFormulas     Formula[]            @relation("FormulaCheckout")
+  checkedOutDocuments    Document[]           @relation("DocumentCheckout")
+  checkedOutFGStructures FGStructure[]        @relation("FGStructureCheckout")
+  npdProjects            NpdProject[]         @relation("NpdProjectLead")
+  gateReviews            GateReview[]         @relation("GateReviewer")
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
 }
 
 model ProductContainer {
-  id          String      @id @default(cuid())
-  code        String      @unique
-  name        String
-  description String?
-  industry    Industry    @default(CHEMICAL)
-  status      ContainerStatus @default(ACTIVE)
-  ownerId     String?
-  owner       User?       @relation("ContainerOwner", fields: [ownerId], references: [id])
-  roles       ContainerRole[]
-  memberships ContainerMembership[]
-  items       Item[]
-  formulas    Formula[]
-  boms        BOM[]
-  changes     ChangeRequest[]
-  releases    ReleaseRequest[]
+  id             String               @id @default(cuid())
+  code           String               @unique
+  name           String
+  description    String?
+  industry       Industry             @default(CHEMICAL)
+  status         ContainerStatus      @default(ACTIVE)
+  ownerId        String?
+  owner          User?                @relation("ContainerOwner", fields: [ownerId], references: [id])
+  roles          ContainerRole[]
+  memberships    ContainerMembership[]
+  items          Item[]
+  formulas       Formula[]
+  fgStructures   FGStructure[]
+  changes        ChangeRequest[]
+  releases       ReleaseRequest[]
   specifications Specification[]
-  documents   Document[]
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  documents      Document[]
+  artworks       Artwork[]
+  tasks          Task[]
+  npdProjects    NpdProject[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 }
 
 model ContainerRole {
-  id          String   @id @default(cuid())
+  id          String               @id @default(cuid())
   containerId String
-  container   ProductContainer @relation(fields: [containerId], references: [id], onDelete: Cascade)
+  container   ProductContainer     @relation(fields: [containerId], references: [id], onDelete: Cascade)
   name        String
   description String?
   permissions Json
   members     ContainerMembership[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
 
   @@unique([containerId, name])
 }
 
 model ContainerMembership {
-  id              String   @id @default(cuid())
+  id              String           @id @default(cuid())
   containerId     String
   container       ProductContainer @relation(fields: [containerId], references: [id], onDelete: Cascade)
   userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   containerRoleId String
-  containerRole   ContainerRole @relation(fields: [containerRoleId], references: [id], onDelete: Cascade)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  containerRole   ContainerRole    @relation(fields: [containerRoleId], references: [id], onDelete: Cascade)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   @@unique([containerId, userId])
 }
 
 model Item {
-  id              String          @id @default(cuid())
-  itemCode        String
-  revisionMajor   Int             @default(1)
-  revisionIteration Int           @default(1)
-  revisionLabel   String          @default("1.1")
-  name            String
-  description     String?
-  industryType    Industry
-  itemType        ItemType
-  uom             String
-  density         Float?
-  viscosity       Float?
-  pH              Float?
-  flashPoint      Float?
-  regulatoryFlags Json?
-  attributes      Json?
-  containerId     String?
-  container       ProductContainer? @relation(fields: [containerId], references: [id])
-  status          LifecycleStatus @default(DRAFT)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id                String            @id @default(cuid())
+  itemCode          String
+  revisionMajor     Int               @default(1)
+  revisionIteration Int               @default(1)
+  revisionLabel     String            @default("1.1")
+  name              String
+  description       String?
+  industryType      Industry
+  itemType          ItemType
+  uom               String
+  density           Float?
+  viscosity         Float?
+  pH                Float?
+  flashPoint        Float?
+  regulatoryFlags   Json?
+  attributes        Json?
+  containerId       String?
+  container         ProductContainer? @relation(fields: [containerId], references: [id])
+  status            LifecycleStatus   @default(IN_WORK)
+  checkedOutById    String?
+  checkedOutBy      User?             @relation("ItemCheckout", fields: [checkedOutById], references: [id], onDelete: SetNull)
+  checkedOutAt      DateTime?
+  checkoutSnapshot  Json?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
   formulaIngredients FormulaIngredient[]
-  outputRecipes      Formula[]          @relation("FormulaOutputItem")
-  parentBoms         BOM[]              @relation("BomParentItem")
-  bomLines           BOMLine[]
+  fgStructures       FGStructure[]       @relation("FGItem")
+  packagingLines     FGPackagingLine[]   @relation("FGPackagingItem")
   specifications     Specification[]
+  artworkAsFg        Artwork[]           @relation("ArtworkFGItem")
+  artworkAsPackaging Artwork[]           @relation("ArtworkPackagingItem")
+  npdProjects        NpdProject[]        @relation("NpdFGItem")
 
   @@unique([itemCode, revisionMajor, revisionIteration])
 }
@@ -263,16 +339,17 @@ model Formula {
   revisionLabel          String              @default("1.1")
   name                   String
   description            String?
-  recipeType             RecipeType          @default(FORMULA_RECIPE)
   industryType           Industry
-  outputItemId           String?
-  outputItem             Item?               @relation("FormulaOutputItem", fields: [outputItemId], references: [id])
   targetYield            Float?
   yieldUom               String?
   batchSize              Float?
   batchUom               String?
   processingInstructions String?
-  status                 FormulaStatus       @default(DRAFT)
+  status                 FormulaStatus       @default(IN_WORK)
+  checkedOutById         String?
+  checkedOutBy           User?               @relation("FormulaCheckout", fields: [checkedOutById], references: [id], onDelete: SetNull)
+  checkedOutAt           DateTime?
+  checkoutSnapshot       Json?
   effectiveDate          DateTime?
   expiryDate             DateTime?
   ownerId                String
@@ -281,9 +358,10 @@ model Formula {
   container              ProductContainer?   @relation(fields: [containerId], references: [id])
   ingredients            FormulaIngredient[]
   usedAsInputIn          FormulaIngredient[] @relation("FormulaInput")
-  bomInputLines          BOMLine[]           @relation("BomInputFormula")
-  boms                   BOM[]
+  fgStructures           FGStructure[]       @relation("FGFormula")
   specs                  Specification[]
+  artworks               Artwork[]
+  npdProjects            NpdProject[]        @relation("NpdFormula")
   createdAt              DateTime            @default(now())
   updatedAt              DateTime            @updatedAt
 
@@ -310,123 +388,226 @@ model FormulaIngredient {
   mixingTime        String?
 }
 
-model BOM {
-  id            String    @id @default(cuid())
-  bomCode       String
-  version       Int
-  revisionMajor Int       @default(1)
-  revisionIteration Int   @default(1)
-  revisionLabel String    @default("1.1")
-  status        BomStatus @default(DRAFT)
-  bomType       BomType   @default(FML_BOM)
-  parentItemId  String?
-  parentItem    Item?     @relation("BomParentItem", fields: [parentItemId], references: [id])
-  formulaId     String?
-  formula       Formula?  @relation(fields: [formulaId], references: [id])
-  type          String
-  containerId   String?
-  container     ProductContainer? @relation(fields: [containerId], references: [id])
-  plantId       String?
-  plant         Plant?    @relation(fields: [plantId], references: [id])
-  effectiveDate DateTime?
-  lines         BOMLine[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+model FGStructure {
+  id                String          @id @default(cuid())
+  fgItemId          String
+  fgItem            Item            @relation("FGItem", fields: [fgItemId], references: [id])
+  formulaId         String
+  formula           Formula         @relation("FGFormula", fields: [formulaId], references: [id])
+  version           Int             @default(1)
+  revisionMajor     Int             @default(1)
+  revisionIteration Int             @default(1)
+  revisionLabel     String          @default("1.1")
+  status            FGStatus        @default(IN_WORK)
+  effectiveDate     DateTime?
+  containerId       String?
+  container         ProductContainer? @relation(fields: [containerId], references: [id])
+  checkedOutById    String?
+  checkedOutBy      User?             @relation("FGStructureCheckout", fields: [checkedOutById], references: [id], onDelete: SetNull)
+  checkedOutAt      DateTime?
+  checkoutSnapshot  Json?
+  packagingLines    FGPackagingLine[]
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
-  @@unique([bomCode, version])
+  @@unique([fgItemId, version])
 }
 
-model BOMLine {
-  id                  String  @id @default(cuid())
-  bomId               String
-  bom                 BOM     @relation(fields: [bomId], references: [id], onDelete: Cascade)
-  lineNumber          Int?
-  itemId              String?
-  item                Item?    @relation(fields: [itemId], references: [id])
-  inputFormulaId      String?
-  inputFormula        Formula? @relation("BomInputFormula", fields: [inputFormulaId], references: [id])
-  quantity            Float
-  uom                 String
-  scrapFactor         Float?
-  phaseStep           String?
-  operationStep       String?
-  referenceDesignator String?
+model FGPackagingLine {
+  id            String      @id @default(cuid())
+  fgStructureId String
+  fgStructure   FGStructure @relation(fields: [fgStructureId], references: [id], onDelete: Cascade)
+  itemId        String
+  item          Item        @relation("FGPackagingItem", fields: [itemId], references: [id])
+  lineNumber    Int?
+  quantity      Float
+  uom           String
 }
 
 model ChangeRequest {
-  id               String         @id @default(cuid())
-  crNumber         String         @unique
+  id               String            @id @default(cuid())
+  crNumber         String            @unique
   title            String
   description      String?
   type             ChangeType
   priority         ChangePriority
   requestedById    String
-  requestedBy      User           @relation("RequestedBy", fields: [requestedById], references: [id])
-  affectedItems    String[]
-  affectedFormulas String[]
-  proposedChanges  Json?
+  requestedBy      User              @relation("RequestedBy", fields: [requestedById], references: [id])
+  affectedItems     String[]
+  affectedFormulas  String[]
+  affectedDocuments String[]
+  proposedChanges   Json?
   impactAssessment String?
   containerId      String?
   container        ProductContainer? @relation(fields: [containerId], references: [id])
-  status           ChangeStatus   @default(NEW)
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  targetAction     ChangeTargetAction @default(RELEASE)
+  status           ChangeStatus      @default(NEW)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 }
 
 model ReleaseRequest {
-  id              String        @id @default(cuid())
-  rrNumber        String        @unique
+  id              String            @id @default(cuid())
+  rrNumber        String            @unique
   title           String
   description     String?
-  status          ReleaseStatus @default(NEW)
+  status          ReleaseStatus     @default(NEW)
   requestedById   String
-  requestedBy     User          @relation("RequestedReleaseBy", fields: [requestedById], references: [id])
+  requestedBy     User              @relation("RequestedReleaseBy", fields: [requestedById], references: [id])
   containerId     String?
   container       ProductContainer? @relation(fields: [containerId], references: [id])
-  targetItems     String[]
-  targetBoms      String[]
-  targetFormulas  String[]
-  affectedItems   String[]
-  affectedFormulas String[]
-  affectedBoms    String[]
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  targetItems       String[]
+  targetFormulas    String[]
+  affectedItems     String[]
+  affectedFormulas  String[]
+  affectedDocuments String[]
+  artworks          Artwork[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 }
 
 model Document {
-  id              String         @id @default(cuid())
-  docNumber       String         @unique
-  name            String
-  description     String?
-  fileName        String
-  filePath        String
-  fileSize        Int
-  mimeType        String
-  docType         DocumentType   @default(OTHER)
-  status          DocumentStatus @default(DRAFT)
-  revisionMajor   Int            @default(1)
-  revisionIteration Int          @default(1)
-  revisionLabel   String         @default("1.1")
-  ownerId         String
-  owner           User           @relation(fields: [ownerId], references: [id])
-  containerId     String?
-  container       ProductContainer? @relation(fields: [containerId], references: [id])
-  links           DocumentLink[]
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  id                String         @id @default(cuid())
+  docNumber         String         @unique
+  name              String
+  description       String?
+  fileName          String
+  filePath          String
+  fileSize          Int
+  mimeType          String
+  docType           DocumentType   @default(OTHER)
+  status            DocumentStatus @default(DRAFT)
+  checkedOutById    String?
+  checkedOutBy      User?          @relation("DocumentCheckout", fields: [checkedOutById], references: [id], onDelete: SetNull)
+  checkedOutAt      DateTime?
+  checkoutSnapshot  Json?
+  revisionMajor     Int            @default(1)
+  revisionIteration Int            @default(1)
+  revisionLabel     String         @default("1.1")
+  ownerId           String
+  owner             User           @relation(fields: [ownerId], references: [id])
+  containerId       String?
+  container         ProductContainer? @relation(fields: [containerId], references: [id])
+  links             DocumentLink[]
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
 }
 
 model DocumentLink {
-  id          String   @id @default(cuid())
-  documentId  String
-  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  entityType  String
-  entityId    String
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  entityType String
+  entityId   String
+  createdAt  DateTime @default(now())
+}
+
+model Artwork {
+  id                String            @id @default(cuid())
+  artworkCode       String            @unique
+  title             String
+  brand             String?
+  packSize          String?
+  market            String?
+  languageSet       Json?
+  status            ArtworkStatus     @default(DRAFT)
+  revisionMajor     Int               @default(1)
+  revisionIteration Int               @default(1)
+  revisionLabel     String            @default("1.1")
+  legalCopy         String?
+  claims            Json?
+  warnings          String?
+  storageConditions String?
+  usageInstructions String?
+  fgItemId          String?
+  fgItem            Item?             @relation("ArtworkFGItem", fields: [fgItemId], references: [id])
+  packagingItemId   String?
+  packagingItem     Item?             @relation("ArtworkPackagingItem", fields: [packagingItemId], references: [id])
+  formulaId         String?
+  formula           Formula?          @relation(fields: [formulaId], references: [id])
+  releaseRequestId  String?
+  releaseRequest    ReleaseRequest?   @relation(fields: [releaseRequestId], references: [id])
+  containerId       String?
+  container         ProductContainer? @relation(fields: [containerId], references: [id])
+  ownerId           String
+  owner             User              @relation(fields: [ownerId], references: [id])
+  components        ArtworkComponent[]
+  files             ArtworkFile[]
+  links             ArtworkLink[]
+  approvals         ArtworkApproval[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+}
+
+model ArtworkComponent {
+  id           String               @id @default(cuid())
+  artworkId    String
+  artwork      Artwork              @relation(fields: [artworkId], references: [id], onDelete: Cascade)
+  componentType ArtworkComponentType
+  name         String
+  dimensions   String?
+  substrate    String?
+  printProcess String?
+  variantKey   String?
+  files        ArtworkFile[]
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+}
+
+model ArtworkFile {
+  id                String              @id @default(cuid())
+  artworkId         String
+  artwork           Artwork             @relation(fields: [artworkId], references: [id], onDelete: Cascade)
+  artworkComponentId String?
+  artworkComponent  ArtworkComponent?   @relation(fields: [artworkComponentId], references: [id], onDelete: SetNull)
+  fileType          ArtworkFileType     @default(PROOF)
+  fileName          String
+  filePath          String
+  fileSize          Int
+  mimeType          String
+  uploadedById      String
+  uploadedBy        User                @relation(fields: [uploadedById], references: [id])
+  annotations       ArtworkAnnotation[]
+  createdAt         DateTime            @default(now())
+}
+
+model ArtworkAnnotation {
+  id             String           @id @default(cuid())
+  artworkFileId  String
+  artworkFile    ArtworkFile      @relation(fields: [artworkFileId], references: [id], onDelete: Cascade)
+  annotation     String
+  coordinates    Json?
+  status         AnnotationStatus @default(OPEN)
+  createdById    String
+  createdBy      User             @relation(fields: [createdById], references: [id])
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+}
+
+model ArtworkLink {
+  id         String   @id @default(cuid())
+  artworkId  String
+  artwork    Artwork  @relation(fields: [artworkId], references: [id], onDelete: Cascade)
+  entityType String
+  entityId   String
+  createdAt  DateTime @default(now())
+}
+
+model ArtworkApproval {
+  id          String        @id @default(cuid())
+  artworkId   String
+  artwork     Artwork       @relation(fields: [artworkId], references: [id], onDelete: Cascade)
+  stage       String
+  approverRole String
+  approverId  String?
+  decision    String?
+  comment     String?
+  decidedAt   DateTime?
+  createdAt   DateTime      @default(now())
 }
 
 model WorkflowDefinition {
-  id          String   @id @default(cuid())
+  id          String             @id @default(cuid())
   name        String
   states      Json
   transitions Json
@@ -444,27 +625,53 @@ model WorkflowInstance {
   entityType   String
   currentState String
   history      Json
+  tasks        Task[]
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
 }
 
+model Task {
+  id                 String            @id @default(cuid())
+  workflowInstanceId String
+  workflowInstance   WorkflowInstance  @relation(fields: [workflowInstanceId], references: [id], onDelete: Cascade)
+  title              String
+  description        String?
+  state              String
+  status             TaskStatus        @default(OPEN)
+  priority           TaskPriority      @default(MEDIUM)
+  assignedToUserId   String?
+  assignedToUser     User?             @relation("TaskAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  assignedRoles      String[]
+  dueDate            DateTime?
+  comment            String?
+  completedAt        DateTime?
+  completedByUserId  String?
+  completedBy        User?             @relation("TaskCompleter", fields: [completedByUserId], references: [id], onDelete: SetNull)
+  entityType         String
+  entityId           String
+  containerId        String?
+  container          ProductContainer? @relation(fields: [containerId], references: [id], onDelete: SetNull)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+}
+
 model Specification {
-  id         String   @id @default(cuid())
-  itemId     String?
-  item       Item?    @relation(fields: [itemId], references: [id])
-  formulaId  String?
-  formula    Formula? @relation(fields: [formulaId], references: [id])
+  id          String            @id @default(cuid())
+  itemId      String?
+  item        Item?             @relation(fields: [itemId], references: [id])
+  formulaId   String?
+  formula     Formula?          @relation(fields: [formulaId], references: [id])
   containerId String?
   container   ProductContainer? @relation(fields: [containerId], references: [id])
-  specType   String
-  attribute  String
-  value      String?
-  uom        String?
-  minValue   Float?
-  maxValue   Float?
-  testMethod String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  specType    String
+  attribute   String
+  value       String?
+  uom         String?
+  minValue    Float?
+  maxValue    Float?
+  testMethod  String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 }
 
 model AuditLog {
@@ -475,4 +682,60 @@ model AuditLog {
   actorId    String?
   payload    Json?
   createdAt  DateTime @default(now())
+}
+
+model NpdProject {
+  id                String            @id @default(cuid())
+  projectCode       String            @unique
+  name              String
+  description       String?
+  stage             NpdStage          @default(DISCOVERY)
+  status            NpdStatus         @default(ACTIVE)
+  targetLaunchDate  DateTime?
+  actualLaunchDate  DateTime?
+  projectLeadId     String?
+  projectLead       User?             @relation("NpdProjectLead", fields: [projectLeadId], references: [id])
+  containerId       String?
+  container         ProductContainer? @relation(fields: [containerId], references: [id])
+  fgItemId          String?
+  fgItem            Item?             @relation("NpdFGItem", fields: [fgItemId], references: [id])
+  formulaId         String?
+  formula           Formula?          @relation("NpdFormula", fields: [formulaId], references: [id])
+  linkedItemIds     String[]
+  linkedFormulaIds  String[]
+  linkedDocumentIds String[]
+  linkedSpecIds     String[]
+  gateReviews       GateReview[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+}
+
+model GateReview {
+  id                 String       @id @default(cuid())
+  npdProjectId       String
+  npdProject         NpdProject   @relation(fields: [npdProjectId], references: [id], onDelete: Cascade)
+  gate               NpdStage
+  decision           GateDecision?
+  mustMeetCriteria   Json
+  shouldMeetCriteria Json
+  overallScore       Float?
+  comments           String?
+  reviewedById       String?
+  reviewedBy         User?        @relation("GateReviewer", fields: [reviewedById], references: [id])
+  reviewedAt         DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+}
+
+model StageGateTemplate {
+  id                 String   @id @default(cuid())
+  industry           Industry
+  stage              NpdStage
+  deliverables       Json
+  mustMeetCriteria   Json
+  shouldMeetCriteria Json
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([industry, stage])
 }

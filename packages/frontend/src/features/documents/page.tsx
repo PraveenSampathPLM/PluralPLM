@@ -1,8 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useContainerStore } from "@/store/container.store";
 import { EntityIcon } from "@/components/entity-icon";
+import { StatusBadge } from "@/components/status-badge";
+import { Link, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 
 interface DocumentRecord {
   id: string;
@@ -32,9 +35,16 @@ interface ItemOption {
 export function DocumentsPage(): JSX.Element {
   const { selectedContainerId } = useContainerStore();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const fromItemId = searchParams.get("fromItemId") ?? "";
+  const fromItemCode = searchParams.get("fromItemCode") ?? "";
+  const [createOpen, setCreateOpen] = useState(false);
+  const createButtonRef = useRef<HTMLButtonElement | null>(null);
+  const createPanelRef = useRef<HTMLDivElement | null>(null);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [message, setMessage] = useState("");
+  const [sortKey, setSortKey] = useState("");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [uploadForm, setUploadForm] = useState({
     name: "",
     description: "",
@@ -46,6 +56,13 @@ export function DocumentsPage(): JSX.Element {
   const [selectedDocId, setSelectedDocId] = useState("");
   const [linkSearch, setLinkSearch] = useState("");
   const [selectedItemId, setSelectedItemId] = useState("");
+
+  // Auto-open create panel when arriving from Digital Thread
+  useEffect(() => {
+    if (fromItemId) {
+      setCreateOpen(true);
+    }
+  }, [fromItemId]);
 
   const nextNumber = useQuery({
     queryKey: ["next-document-number"],
@@ -92,18 +109,29 @@ export function DocumentsPage(): JSX.Element {
       if (selectedContainerId) {
         formData.append("containerId", selectedContainerId);
       }
-      await api.post("/documents", formData, {
+      const res = await api.post<{ id: string }>("/documents", formData, {
         headers: { "Content-Type": "multipart/form-data" }
       });
+      return res.data;
     },
-    onSuccess: async () => {
-      setMessage("Document uploaded.");
+    onSuccess: async (data) => {
+      // Auto-link to the originating FG Item if coming from Digital Thread
+      if (fromItemId && data?.id) {
+        try {
+          await api.post(`/documents/${data.id}/link`, { entityType: "ITEM", entityId: fromItemId });
+          toast.success(`Document uploaded and linked to ${fromItemCode || "item"}.`);
+        } catch {
+          toast.success("Document uploaded. Please link it to the item manually.");
+        }
+      } else {
+        toast.success("Document uploaded.");
+      }
       setUploadForm({ name: "", description: "", status: "DRAFT", docType: "OTHER" });
       setFile(null);
       await queryClient.invalidateQueries({ queryKey: ["next-document-number"] });
       await queryClient.invalidateQueries({ queryKey: ["documents"] });
     },
-    onError: (error) => setMessage(error instanceof Error ? error.message : "Upload failed")
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Upload failed")
   });
 
   const linkDocument = useMutation({
@@ -117,23 +145,122 @@ export function DocumentsPage(): JSX.Element {
       });
     },
     onSuccess: async () => {
-      setMessage("Document linked to item.");
+      toast.success("Document linked to item.");
       setSelectedItemId("");
       setLinkSearch("");
     },
-    onError: (error) => setMessage(error instanceof Error ? error.message : "Link failed")
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Link failed")
   });
+
+  function handleSort(key: string): void {
+    if (sortKey === key) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  function exportCsv(): void {
+    if (!sortedDocs.length) return;
+    const headers = ["docNumber", "name", "docType", "status", "fileName", "fileSize", "createdAt"];
+    const csv = [
+      headers.join(","),
+      ...sortedDocs.map((doc) =>
+        headers
+          .map((h) => {
+            const val = String((doc as any)[h] ?? "").replace(/"/g, '""');
+            return val.includes(",") || val.includes('"') ? `"${val}"` : val;
+          })
+          .join(",")
+      )
+    ].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "documents-export.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function SortHeader({ label, colKey }: { label: string; colKey: string }) {
+    const active = sortKey === colKey;
+    return (
+      <button type="button" onClick={() => handleSort(colKey)} className="flex items-center gap-1 text-left font-medium hover:text-primary">
+        {label}
+        <span className="text-[10px] text-slate-400">{active ? (sortDir === "asc" ? "▲" : "▼") : "⇅"}</span>
+      </button>
+    );
+  }
 
   const total = documents.data?.total ?? 0;
   const pageSize = documents.data?.pageSize ?? 10;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
-  const sortedDocs = useMemo(() => documents.data?.data ?? [], [documents.data?.data]);
+  const sortedDocs = useMemo(() => {
+    const docs = documents.data?.data ?? [];
+    if (!sortKey) return docs;
+    return [...docs].sort((a, b) => {
+      const aVal = String((a as any)[sortKey] ?? "").toLowerCase();
+      const bVal = String((b as any)[sortKey] ?? "").toLowerCase();
+      return sortDir === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+    });
+  }, [documents.data?.data, sortKey, sortDir]);
+
+  useEffect(() => {
+    if (!createOpen) {
+      return;
+    }
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) {
+        return;
+      }
+      if (createPanelRef.current?.contains(target)) {
+        return;
+      }
+      if (createButtonRef.current?.contains(target)) {
+        return;
+      }
+      setCreateOpen(false);
+    };
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setCreateOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onEscape);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onEscape);
+    };
+  }, [createOpen]);
 
   return (
     <div className="space-y-4 rounded-xl bg-white p-4">
-      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+        <button
+          ref={createButtonRef}
+          type="button"
+          onClick={() => setCreateOpen((prev) => !prev)}
+          className="w-full rounded-lg border border-primary bg-primary px-4 py-3 text-left text-sm font-semibold text-white shadow-sm transition hover:bg-[#174766]"
+        >
+          + Upload Document
+        </button>
+        <p className="mt-2 text-xs text-slate-500">Auto-number preview: {nextNumber.data?.value ?? "Loading..."}</p>
+      </div>
+
+      {createOpen ? (
+      <div ref={createPanelRef} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
         <h3 className="mb-3 font-heading text-lg">Upload Document</h3>
+        {fromItemId && fromItemCode ? (
+          <div className="mb-3 flex items-center gap-2 rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-700">
+            <span>🔗</span>
+            <span>This document will be automatically linked to <strong>{fromItemCode}</strong></span>
+          </div>
+        ) : null}
         <p className="mb-2 text-xs text-slate-500">Auto-number preview: {nextNumber.data?.value ?? "Loading..."}</p>
         <div className="grid gap-3 md:grid-cols-5">
           <input
@@ -192,6 +319,11 @@ export function DocumentsPage(): JSX.Element {
               setDragActive(false);
               const dropped = event.dataTransfer.files?.[0];
               if (dropped) {
+                const allowed = /\.(pdf|docx?|xlsx?|pptx?|txt|csv|png|jpe?g|gif|bmp|tiff|zip|msg)$/i;
+                if (!allowed.test(dropped.name)) {
+                  toast.error("Unsupported file type. Please upload PDF, Office docs, images, CSV, or ZIP files.");
+                  return;
+                }
                 setFile(dropped);
                 const baseName = dropped.name.replace(/\.[^/.]+$/, "");
                 setUploadForm((prev) => ({ ...prev, name: prev.name || baseName }));
@@ -207,8 +339,17 @@ export function DocumentsPage(): JSX.Element {
               <input
                 type="file"
                 className="hidden"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.gif,.bmp,.tiff,.zip,.msg"
                 onChange={(event) => {
                   const picked = event.target.files?.[0] ?? null;
+                  if (picked) {
+                    const allowed = /\.(pdf|docx?|xlsx?|pptx?|txt|csv|png|jpe?g|gif|bmp|tiff|zip|msg)$/i;
+                    if (!allowed.test(picked.name)) {
+                      toast.error("Unsupported file type. Please upload PDF, Office docs, images, CSV, or ZIP files.");
+                      event.target.value = "";
+                      return;
+                    }
+                  }
                   setFile(picked);
                   if (picked) {
                     const baseName = picked.name.replace(/\.[^/.]+$/, "");
@@ -223,12 +364,13 @@ export function DocumentsPage(): JSX.Element {
           type="button"
           onClick={() => uploadDocument.mutate()}
           disabled={!file || uploadDocument.isPending}
+          title={!file ? "Select a file before uploading" : undefined}
           className="mt-3 rounded bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
         >
           {uploadDocument.isPending ? "Uploading..." : "Upload Document"}
         </button>
-        {message ? <p className="mt-2 text-sm text-slate-700">{message}</p> : null}
       </div>
+      ) : null}
 
       <div className="flex items-center justify-between">
         <h2 className="font-heading text-xl">Documents</h2>
@@ -247,30 +389,40 @@ export function DocumentsPage(): JSX.Element {
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
               <th className="w-10 py-2"> </th>
-              <th className="py-2">Doc #</th>
-              <th className="py-2">Name</th>
-              <th className="py-2">Type</th>
-              <th className="py-2">Status</th>
+              <th className="py-2"><SortHeader label="Doc #" colKey="docNumber" /></th>
+              <th className="py-2"><SortHeader label="Name" colKey="name" /></th>
+              <th className="py-2"><SortHeader label="Type" colKey="docType" /></th>
+              <th className="py-2"><SortHeader label="Status" colKey="status" /></th>
               <th className="py-2">File</th>
               <th className="py-2">Link</th>
               <th className="py-2">Download</th>
             </tr>
           </thead>
           <tbody>
+            {sortedDocs.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="py-8 text-center text-sm text-slate-500">
+                  <p className="font-medium">No documents found</p>
+                  <p className="mt-1 text-xs">{search ? "Try a different search term" : "Click \"+ Upload Document\" above to get started"}</p>
+                </td>
+              </tr>
+            ) : null}
             {sortedDocs.map((doc) => (
               <tr key={doc.id} className="border-b border-slate-100">
                 <td className="py-2 text-slate-500">
                   <EntityIcon kind="document" />
                 </td>
                 <td className="py-2 font-mono">
-                  <a href={`/documents/${doc.id}`} className="text-primary hover:underline">{doc.docNumber}</a>
+                  <Link to={`/documents/${doc.id}`} className="text-primary hover:underline">
+                    {doc.docNumber}
+                  </Link>
                 </td>
                 <td className="py-2">
                   <p className="font-medium text-slate-800">{doc.name}</p>
                   <p className="text-xs text-slate-500">{doc.description ?? ""}</p>
                 </td>
                 <td className="py-2">{doc.docType}</td>
-                <td className="py-2">{doc.status}</td>
+                <td className="py-2"><StatusBadge status={doc.status} /></td>
                 <td className="py-2 text-xs text-slate-500">{doc.fileName}</td>
                 <td className="py-2">
                   <button
@@ -297,7 +449,18 @@ export function DocumentsPage(): JSX.Element {
       )}
 
       <div className="flex items-center justify-between text-sm text-slate-600">
-        <p>Documents: {total} records</p>
+        <div className="flex items-center gap-3">
+          <p>Documents: {total} records</p>
+          <button
+            type="button"
+            onClick={exportCsv}
+            disabled={sortedDocs.length === 0}
+            title="Export current page to CSV"
+            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-60"
+          >
+            ↓ Export CSV
+          </button>
+        </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -362,7 +525,6 @@ export function DocumentsPage(): JSX.Element {
             >
               {linkDocument.isPending ? "Linking..." : "Link Item"}
             </button>
-            {message ? <p className="mt-2 text-xs text-slate-600">{message}</p> : null}
           </div>
         </div>
       ) : null}

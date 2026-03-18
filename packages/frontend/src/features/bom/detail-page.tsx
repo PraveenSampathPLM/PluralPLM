@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { STANDARD_UOMS } from "@/lib/uom";
 import { EntityIcon } from "@/components/entity-icon";
+import { DetailHeaderCard } from "@/components/detail-header-card";
+import { StatusBadge } from "@/components/status-badge";
 
 interface BomDetail {
   id: string;
@@ -88,21 +90,6 @@ export function BomDetailPage(): JSX.Element {
   const [draftLines, setDraftLines] = useState<BomLineRow[]>([]);
   const [activeTab, setActiveTab] = useState<"details" | "history">("details");
 
-  function renderStatusBadge(status?: string): JSX.Element {
-    const normalized = status ?? "DRAFT";
-    const color =
-      normalized === "DRAFT"
-        ? "bg-slate-100 text-slate-700"
-        : normalized === "IN_REVIEW"
-          ? "bg-amber-100 text-amber-700"
-          : normalized === "APPROVED"
-            ? "bg-emerald-100 text-emerald-700"
-            : normalized === "RELEASED"
-              ? "bg-blue-100 text-blue-700"
-              : "bg-rose-100 text-rose-700";
-    return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${color}`}>{normalized}</span>;
-  }
-
   const bom = useQuery({
     queryKey: ["bom-detail-page", bomId],
     queryFn: async () => (await api.get<BomDetail>(`/bom/${bomId}`)).data,
@@ -177,7 +164,7 @@ export function BomDetailPage(): JSX.Element {
     if (!bom.data) {
       return;
     }
-    const rows =
+    const rows: BomLineRow[] =
       bom.data.lines?.map((line, index) => ({
         lineNumber: String(line.lineNumber ?? index + 1),
         sourceType: line.inputFormula?.id ? "FORMULA" : "ITEM",
@@ -219,7 +206,12 @@ export function BomDetailPage(): JSX.Element {
         return prev;
       }
       const next = [...prev];
-      [next[index], next[target]] = [next[target], next[index]];
+      const currentRow = next[index];
+      const targetRow = next[target];
+      if (!currentRow || !targetRow) {
+        return prev;
+      }
+      [next[index], next[target]] = [targetRow, currentRow];
       return renumberLines(next);
     });
   }
@@ -290,24 +282,20 @@ export function BomDetailPage(): JSX.Element {
 
   return (
     <div className="space-y-4 rounded-xl bg-white p-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="rounded-full bg-slate-100 p-2">
-            <EntityIcon kind="bom" size={20} />
-          </div>
-          <div>
-          <p className="font-mono text-sm text-slate-500">
-            {bom.data?.bomCode} v{bom.data?.version} ({bom.data?.revisionLabel ?? "1.1"})
-          </p>
-        <h2 className="font-heading text-xl">BOM {bom.data?.bomType === "FG_BOM" ? "FG" : "FML"}</h2>
-        <div className="mt-1 flex items-center gap-2 text-sm text-slate-500">
-          <span>Status</span>
-          {renderStatusBadge(bom.data?.status)}
-        </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {bom.data?.status === "DRAFT" ? (
+      <DetailHeaderCard
+        icon={<EntityIcon kind="bom" size={20} />}
+        code={`${bom.data?.bomCode ?? ""} v${bom.data?.version ?? ""} (${bom.data?.revisionLabel ?? "1.1"})`}
+        title={`BOM ${bom.data?.bomType === "FG_BOM" ? "FG" : "FML"}`}
+        meta={
+          <span className="inline-flex items-center gap-2">
+            <span>Status</span>
+            <StatusBadge status={bom.data?.status} />
+          </span>
+        }
+        backTo="/bom"
+        backLabel="Back to BOM"
+        actions={
+          bom.data?.status === "IN_WORK" ? (
             isEditing ? (
               <>
                 <button
@@ -334,14 +322,11 @@ export function BomDetailPage(): JSX.Element {
                 Edit Structure
               </button>
             )
-          ) : null}
-          <Link to="/bom" className="rounded border border-slate-300 bg-white px-3 py-1 text-sm">
-            Back to BOM
-          </Link>
-        </div>
-      </div>
+          ) : null
+        }
+      />
 
-      {bom.data?.status === "DRAFT" && !isEditing ? (
+      {bom.data?.status === "IN_WORK" && !isEditing ? (
         <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span>This BOM is in Draft and can be edited.</span>

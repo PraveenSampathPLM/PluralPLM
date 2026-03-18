@@ -43,7 +43,7 @@ router.get("/", async (req, res, next) => {
       const data = await prisma.productContainer.findMany({
         include: {
           owner: { select: { id: true, name: true, email: true } },
-          _count: { select: { items: true, formulas: true, boms: true, memberships: true } }
+          _count: { select: { items: true, formulas: true, fgStructures: true, memberships: true } }
         },
         orderBy: { updatedAt: "desc" }
       });
@@ -55,7 +55,7 @@ router.get("/", async (req, res, next) => {
       where: { memberships: { some: { userId } } },
       include: {
         owner: { select: { id: true, name: true, email: true } },
-        _count: { select: { items: true, formulas: true, boms: true, memberships: true } }
+        _count: { select: { items: true, formulas: true, fgStructures: true, memberships: true } }
       },
       orderBy: { updatedAt: "desc" }
     });

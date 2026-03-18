@@ -1,0 +1,45 @@
+# Dependencies — reinstalled inside image
+node_modules
+packages/*/node_modules
+
+# Build outputs — rebuilt inside image
+packages/*/dist
+packages/frontend/build
+
+# Dev environment files
+.env
+.env.local
+.env.production
+packages/backend/.env
+
+# Source maps and compiled JS from local dev
+packages/frontend/src/**/*.js
+packages/frontend/src/**/*.js.map
+packages/frontend/src/**/*.d.ts
+
+# Test & coverage
+coverage
+*.test.*
+*.spec.*
+
+# Editor / OS
+.DS_Store
+.vscode
+.idea
+*.log
+*.tsbuildinfo
+
+# Git
+.git
+.gitignore
+
+# CI
+.github
+
+# Docs / scripts not needed in image
+*.md
+Makefile
+scripts
+
+# Uploaded files (mounted as a volume in production)
+packages/backend/storage

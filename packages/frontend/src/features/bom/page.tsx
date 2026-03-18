@@ -6,6 +6,7 @@ import { ObjectActionsMenu, type ObjectActionKey } from "@/components/object-act
 import { useContainerStore } from "@/store/container.store";
 import { STANDARD_UOMS } from "@/lib/uom";
 import { EntityIcon } from "@/components/entity-icon";
+import { StatusBadge } from "@/components/status-badge";
 
 interface BomLine {
   lineNumber?: number;
@@ -115,7 +116,12 @@ export function BomPage(): JSX.Element {
   const formulas = useQuery({
     queryKey: ["bom-formula-options"],
     queryFn: async () =>
-      (await api.get<{ data: Array<{ id: string; formulaCode: string; version: number }> }>("/formulas", { params: { pageSize: 200 } })).data
+      (
+        await api.get<{ data: Array<{ id: string; formulaCode: string; version: number; recipeType: "FORMULA_RECIPE" | "FINISHED_GOOD_RECIPE" }> }>(
+          "/formulas",
+          { params: { pageSize: 200 } }
+        )
+      ).data
   });
   const containers = useQuery({
     queryKey: ["bom-container-options"],
@@ -249,21 +255,6 @@ export function BomPage(): JSX.Element {
     }
   }
 
-  function renderStatusBadge(status?: string): ReactNode {
-    const normalized = status ?? "DRAFT";
-    const color =
-      normalized === "DRAFT"
-        ? "bg-slate-100 text-slate-700"
-        : normalized === "IN_REVIEW"
-          ? "bg-amber-100 text-amber-700"
-          : normalized === "APPROVED"
-            ? "bg-emerald-100 text-emerald-700"
-            : normalized === "RELEASED"
-              ? "bg-blue-100 text-blue-700"
-              : "bg-rose-100 text-rose-700";
-    return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${color}`}>{normalized}</span>;
-  }
-
   const bomColumnDefs: Record<string, { label: string; render: (bom: BomRecord) => ReactNode }> = {
     bomCode: { label: "BOM Code", render: (bom) => bom.bomCode },
     revisionLabel: { label: "Revision", render: (bom) => bom.revisionLabel ?? "1.1" },
@@ -273,7 +264,7 @@ export function BomPage(): JSX.Element {
       render: (bom) => (bom.bomType === "FG_BOM" ? `${bom.parentItem?.itemCode ?? "N/A"}` : bom.bomCode)
     },
     version: { label: "Version", render: (bom) => String(bom.version) },
-    status: { label: "Status", render: (bom) => renderStatusBadge(bom.status) },
+    status: { label: "Status", render: (bom) => <StatusBadge status={bom.status} /> },
     effectiveDate: {
       label: "Effective Date",
       render: (bom) => (bom.effectiveDate ? new Date(bom.effectiveDate).toLocaleDateString() : "N/A")
@@ -562,8 +553,8 @@ export function BomPage(): JSX.Element {
                     <ObjectActionsMenu
                       onAction={(action) => void runBomAction(bom, action)}
                       actions={[
-                        { key: "checkout", label: "Check Out", disabled: bom.status !== "DRAFT" },
-                        { key: "checkin", label: "Check In", disabled: bom.status !== "IN_REVIEW" },
+                        { key: "checkout", label: "Check Out", disabled: bom.status !== "IN_WORK" },
+                        { key: "checkin", label: "Check In", disabled: bom.status !== "UNDER_REVIEW" },
                         { key: "revise", label: "Revise" },
                         { key: "copy", label: "Copy" },
                         { key: "delete", label: "Delete", danger: true }

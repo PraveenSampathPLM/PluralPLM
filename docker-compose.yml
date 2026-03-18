@@ -1,4 +1,5 @@
-version: "3.9"
+# Dev-only infra — starts Postgres and Redis for local development.
+# The frontend and backend run outside Docker (npm run dev).
 
 services:
   postgres:
@@ -12,6 +13,11 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d plm_project"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7

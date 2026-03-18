@@ -8,10 +8,11 @@ import {
   Layers,
   FileText,
   GitCompare,
-  Rocket
+  Rocket,
+  Palette
 } from "lucide-react";
 
-type EntityKind = "item" | "formula" | "bom" | "document" | "change" | "release";
+type EntityKind = "item" | "formula" | "bom" | "document" | "change" | "release" | "artwork";
 type ItemVariant = "RAW_MATERIAL" | "INTERMEDIATE" | "FINISHED_GOOD" | "PACKAGING" | string | undefined;
 
 interface Props {
@@ -27,7 +28,8 @@ const iconMap: Record<EntityKind, LucideIcon> = {
   bom: Layers,
   document: FileText,
   change: GitCompare,
-  release: Rocket
+  release: Rocket,
+  artwork: Palette
 };
 
 export function EntityIcon({ kind, size = 16, className, variant }: Props): JSX.Element {

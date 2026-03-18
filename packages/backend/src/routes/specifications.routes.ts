@@ -152,7 +152,17 @@ router.get("/templates/:industry", authorize([...readRoles]), async (req, res, n
 router.put("/templates/:industry", authorize(["System Admin", "PLM Admin"]), async (req, res, next) => {
   try {
     const industry = String(req.params.industry ?? "").toUpperCase();
-    const payload = z.array(templateSchema).min(1).parse(req.body);
+    const rawPayload = z.array(templateSchema).min(1).parse(req.body);
+    const payload = rawPayload.map((t) => ({
+      specType: t.specType,
+      label: t.label,
+      attributes: t.attributes.map((a) => ({
+        key: a.key,
+        ...(a.defaultUom !== undefined ? { defaultUom: a.defaultUom } : {}),
+        ...(a.defaultTestMethod !== undefined ? { defaultTestMethod: a.defaultTestMethod } : {}),
+        ...(a.valueKind !== undefined ? { valueKind: a.valueKind } : {})
+      }))
+    }));
     await updateSpecTemplates(industry, payload);
     res.status(204).send();
   } catch (error) {
@@ -164,7 +174,7 @@ router.get("/", authorize([...readRoles]), async (req, res, next) => {
   try {
     const page = Number(req.query.page ?? 1);
     const pageSize = Number(req.query.pageSize ?? 20);
-    const specType = req.query.specType ? chemicalSpecTypeSchema.parse(String(req.query.specType)) : undefined;
+    const specType = req.query.specType ? specTypeSchema.parse(String(req.query.specType)) : undefined;
     const scope = scopeSchema.parse(req.query.scope ? String(req.query.scope) : undefined);
     const attribute = String(req.query.attribute ?? "").trim();
     const itemId = String(req.query.itemId ?? "").trim();

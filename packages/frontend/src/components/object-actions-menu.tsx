@@ -7,7 +7,8 @@ export type ObjectActionKey =
   | "copy"
   | "delete"
   | "create_release"
-  | "create_change";
+  | "create_change"
+  | "create_npd";
 
 interface ObjectActionItem {
   key: ObjectActionKey;
@@ -25,7 +26,7 @@ const defaultActions: ObjectActionItem[] = [
   { key: "checkout", label: "Check Out" },
   { key: "checkin", label: "Check In" },
   { key: "revise", label: "Revise" },
-  { key: "copy", label: "Copy" },
+  { key: "copy", label: "Save as Copy" },
   { key: "delete", label: "Delete", danger: true }
 ];
 

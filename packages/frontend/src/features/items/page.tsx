@@ -1,13 +1,14 @@
-import { useState } from "react";
-import { useEffect } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { ObjectActionsMenu, type ObjectActionKey } from "@/components/object-actions-menu";
 import { useContainerStore } from "@/store/container.store";
 import { FloatingInput, FloatingSelect } from "@/components/floating-field";
 import { STANDARD_UOMS } from "@/lib/uom";
+import { StatusBadge } from "@/components/status-badge";
 import { EntityIcon } from "@/components/entity-icon";
+import { toast } from "sonner";
 
 interface Item {
   id: string;
@@ -65,14 +66,31 @@ interface UomResponse {
   data: Array<{ value: string; label: string; category: string }>;
 }
 
+interface FgPackagingLineInput {
+  lineNumber: string;
+  itemId: string;
+  quantity: string;
+  uom: string;
+}
+
 export function ItemsPage(): JSX.Element {
+  const currentUserRole = (JSON.parse(localStorage.getItem("plm_user") || "{}") as { role?: string }).role ?? "";
+  const isAdmin = ["System Admin", "PLM Admin", "Container Admin"].includes(currentUserRole);
   const { selectedContainerId } = useContainerStore();
+  const [searchParams] = useSearchParams();
+  const fromNpdProjectId = searchParams.get("fromNpdProjectId") ?? "";
+  const fromNpdProjectCode = searchParams.get("fromNpdProjectCode") ?? "";
+  const fromNpdProjectName = searchParams.get("fromNpdProjectName") ?? "";
+  const [createOpen, setCreateOpen] = useState(false);
+  const createButtonRef = useRef<HTMLButtonElement | null>(null);
+  const createPanelRef = useRef<HTMLDivElement | null>(null);
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<"FG" | "FORMULA" | "RM" | "PKG">("FG");
   const [page, setPage] = useState(1);
+  const [sortKey, setSortKey] = useState("");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [selectedItemId, setSelectedItemId] = useState("");
   const queryClient = useQueryClient();
-  const [message, setMessage] = useState<string>("");
   const [form, setForm] = useState({
     itemCode: "",
     name: "",
@@ -85,6 +103,23 @@ export function ItemsPage(): JSX.Element {
     containerId: selectedContainerId,
     customAttributes: {} as Record<string, string | boolean>
   });
+  const [fgStructureForm, setFgStructureForm] = useState({
+    formulaId: "",
+    effectiveDate: ""
+  });
+  const [fgPackagingLines, setFgPackagingLines] = useState<FgPackagingLineInput[]>([
+    { lineNumber: "10", itemId: "", quantity: "", uom: "ea" }
+  ]);
+
+  // Auto-open create panel as FINISHED_GOOD when arriving from an NPD project
+  useEffect(() => {
+    if (fromNpdProjectId) {
+      setCreateOpen(true);
+      setForm((prev) => ({ ...prev, itemType: "FINISHED_GOOD" }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromNpdProjectId]);
+
   const containers = useQuery({
     queryKey: ["item-container-options"],
     queryFn: async () => (await api.get<{ data: ContainerOption[] }>("/containers")).data
@@ -98,6 +133,24 @@ export function ItemsPage(): JSX.Element {
     queryKey: ["config-uoms"],
     queryFn: async () => (await api.get<UomResponse>("/config/uoms")).data,
     retry: false
+  });
+  const formulaOptions = useQuery({
+    queryKey: ["item-create-formula-options", selectedContainerId],
+    queryFn: async () =>
+      (
+        await api.get<{ data: Array<{ id: string; formulaCode: string; version: number; name: string; recipeType: string }> }>("/formulas", {
+          params: { pageSize: 200, ...(selectedContainerId ? { containerId: selectedContainerId } : {}) }
+        })
+      ).data
+  });
+  const packagingOptions = useQuery({
+    queryKey: ["item-create-packaging-options", selectedContainerId],
+    queryFn: async () =>
+      (
+        await api.get<{ data: Array<{ id: string; itemCode: string; name: string }> }>("/items", {
+          params: { pageSize: 200, itemType: "PACKAGING", ...(selectedContainerId ? { containerId: selectedContainerId } : {}) }
+        })
+      ).data
   });
 
   const itemNumberEntity =
@@ -176,7 +229,8 @@ export function ItemsPage(): JSX.Element {
         }
       }
 
-      await api.post("/items", {
+      const createdItem = (
+        await api.post<{ id: string; itemType: string; itemCode: string }>("/items", {
         itemCode: form.itemCode || undefined,
         name: form.name,
         itemType: form.itemType,
@@ -187,10 +241,65 @@ export function ItemsPage(): JSX.Element {
         flashPoint: form.flashPoint ? Number(form.flashPoint) : undefined,
         containerId: selectedContainerId,
         customAttributes
-      });
+        })
+      ).data;
+
+      if (form.itemType === "FINISHED_GOOD") {
+        if (!fgStructureForm.formulaId) {
+          throw new Error("For FG create, input formula is required.");
+        }
+        const normalizedLines = fgPackagingLines.map((line, index) => ({
+          index,
+          itemId: line.itemId.trim(),
+          quantity: line.quantity.trim(),
+          lineNumber: line.lineNumber.trim(),
+          uom: line.uom.trim() || "ea"
+        }));
+        const hasIncomplete = normalizedLines.some((line) => (line.itemId && !line.quantity) || (!line.itemId && line.quantity));
+        if (hasIncomplete) {
+          throw new Error("FG packaging line is incomplete. Fill both item and quantity.");
+        }
+        const completeLines = normalizedLines.filter((line) => line.itemId && line.quantity);
+        if (!completeLines.length) {
+          throw new Error("For FG create, add at least one packaging line.");
+        }
+        await api.post("/fg", {
+          fgItemId: createdItem.id,
+          formulaId: fgStructureForm.formulaId,
+          ...(selectedContainerId ? { containerId: selectedContainerId } : {}),
+          ...(fgStructureForm.effectiveDate ? { effectiveDate: fgStructureForm.effectiveDate } : {}),
+          packagingLines: completeLines.map((line, index) => {
+            const quantity = Number(line.quantity);
+            if (!Number.isFinite(quantity) || quantity <= 0) {
+              throw new Error(`Packaging line ${line.index + 1}: quantity must be a positive number.`);
+            }
+            const lineNumber = line.lineNumber ? Number(line.lineNumber) : (index + 1) * 10;
+            if (!Number.isFinite(lineNumber) || lineNumber <= 0) {
+              throw new Error(`Packaging line ${line.index + 1}: line number must be a positive number.`);
+            }
+            return {
+              lineNumber,
+              itemId: line.itemId,
+              quantity,
+              uom: line.uom
+            };
+          })
+        });
+      }
+      return createdItem;
     },
-    onSuccess: async () => {
-      setMessage("Item created successfully.");
+    onSuccess: async (createdItem) => {
+      toast.success(form.itemType === "FINISHED_GOOD" ? "Finished Good and structure created successfully." : "Item created successfully.");
+      // If arriving from an NPD project, auto-link this FG item back to the project
+      if (fromNpdProjectId && form.itemType === "FINISHED_GOOD") {
+        try {
+          await api.patch(`/npd/projects/${fromNpdProjectId}`, { fgItemId: createdItem.id });
+          toast.success(`FG Item linked to NPD project ${fromNpdProjectCode}`);
+          await queryClient.invalidateQueries({ queryKey: ["npd-project", fromNpdProjectId] });
+        } catch {
+          toast.error("Item created but failed to link to NPD project — link it manually.");
+        }
+      }
       setForm({
         itemCode: "",
         name: "",
@@ -203,12 +312,14 @@ export function ItemsPage(): JSX.Element {
         containerId: selectedContainerId,
         customAttributes: {}
       });
+      setFgStructureForm({ formulaId: "", effectiveDate: "" });
+      setFgPackagingLines([{ lineNumber: "10", itemId: "", quantity: "", uom: "ea" }]);
       await queryClient.invalidateQueries({ queryKey: ["items"] });
+      await queryClient.invalidateQueries({ queryKey: ["fg"] });
       await queryClient.invalidateQueries({ queryKey: ["next-item-number"] });
     },
     onError: (error) => {
-      const text = error instanceof Error ? error.message : "Create failed";
-      setMessage(text);
+      toast.error(error instanceof Error ? error.message : "Create failed");
     }
   });
 
@@ -224,7 +335,7 @@ export function ItemsPage(): JSX.Element {
           targetFormulas: [],
           status: "NEW"
         });
-        setMessage(`Release request created for ${item.itemCode}.`);
+        toast.success(`Release request created for ${item.itemCode}.`);
       } else if (action === "create_change") {
         await api.post("/changes", {
           title: `Change for ${item.itemCode}`,
@@ -236,34 +347,56 @@ export function ItemsPage(): JSX.Element {
           affectedItems: [item.itemCode],
           affectedFormulas: []
         });
-        setMessage(`Change request created for ${item.itemCode}.`);
+        toast.success(`Change request created for ${item.itemCode}.`);
       } else if (action === "checkout") {
         await api.post(`/items/${item.id}/check-out`);
-        setMessage(`Item ${item.itemCode} checked out.`);
+        toast.success(`Item ${item.itemCode} checked out.`);
       } else if (action === "checkin") {
         await api.post(`/items/${item.id}/check-in`);
-        setMessage(`Item ${item.itemCode} checked in.`);
+        toast.success(`Item ${item.itemCode} checked in.`);
       } else if (action === "copy") {
         await api.post(`/items/${item.id}/copy`);
-        setMessage(`Copy created for ${item.itemCode}.`);
+        toast.success(`Copy created for ${item.itemCode}.`);
       } else if (action === "revise") {
         await api.post(`/items/${item.id}/revise`);
-        setMessage(`Revision created for ${item.itemCode}.`);
+        toast.success(`Revision created for ${item.itemCode}.`);
       } else if (action === "delete") {
-        if (!window.confirm(`Delete item ${item.itemCode}?`)) {
+        // Fetch usage info before confirming
+        let usageWarning = "";
+        try {
+          const links = await api.get<{ formulaUsages: unknown[]; bomUsages: unknown[] }>(`/items/${item.id}/links`);
+          const formulaCount = links.data?.formulaUsages?.length ?? 0;
+          const bomCount = links.data?.bomUsages?.length ?? 0;
+          if (formulaCount > 0 || bomCount > 0) {
+            usageWarning = `\n\nWarning: This item is used in ${formulaCount} formula(s) and ${bomCount} structure(s). Deleting it may break those records.`;
+          }
+        } catch { /* ignore, proceed with plain confirm */ }
+        if (!window.confirm(`Delete item ${item.itemCode}?${usageWarning}`)) {
           return;
         }
         await api.delete(`/items/${item.id}`);
         if (selectedItemId === item.id) {
           setSelectedItemId("");
         }
-        setMessage(`Item ${item.itemCode} deleted.`);
+        toast.success(`Item ${item.itemCode} deleted.`);
       }
       await queryClient.invalidateQueries({ queryKey: ["items"] });
       await queryClient.invalidateQueries({ queryKey: ["next-item-number"] });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Action failed");
+      toast.error(error instanceof Error ? error.message : "Action failed");
     }
+  }
+
+  function updateFgPackagingLine(index: number, patch: Partial<FgPackagingLineInput>): void {
+    setFgPackagingLines((prev) => prev.map((line, lineIndex) => (lineIndex === index ? { ...line, ...patch } : line)));
+  }
+
+  function addFgPackagingLine(): void {
+    setFgPackagingLines((prev) => [...prev, { lineNumber: String((prev.length + 1) * 10), itemId: "", quantity: "", uom: "ea" }]);
+  }
+
+  function removeFgPackagingLine(index: number): void {
+    setFgPackagingLines((prev) => (prev.length === 1 ? prev : prev.filter((_, lineIndex) => lineIndex !== index)));
   }
 
   const itemActions: Array<{ key: ObjectActionKey; label: string; disabled?: boolean; danger?: boolean }> = [
@@ -272,17 +405,17 @@ export function ItemsPage(): JSX.Element {
     { key: "checkout", label: "Check Out" },
     { key: "checkin", label: "Check In" },
     { key: "revise", label: "Revise" },
-    { key: "copy", label: "Copy" },
-    { key: "delete", label: "Delete", danger: true }
+    { key: "copy", label: "Save as Copy" },
+    ...(isAdmin ? [{ key: "delete" as ObjectActionKey, label: "Delete", danger: true }] : [])
   ];
 
-  const itemColumnDefs: Record<string, { label: string; render: (item: Item) => string }> = {
+  const itemColumnDefs: Record<string, { label: string; render: (item: Item) => ReactNode }> = {
     itemCode: { label: "Code", render: (item) => item.itemCode },
     revisionLabel: { label: "Revision", render: (item) => item.revisionLabel ?? "1.1" },
     name: { label: "Name", render: (item) => item.name },
     itemType: { label: "Type", render: (item) => item.itemType },
     uom: { label: "UOM", render: (item) => item.uom },
-    status: { label: "Status", render: (item) => item.status },
+    status: { label: "Status", render: (item) => <StatusBadge status={item.status} /> },
     updatedAt: { label: "Updated", render: (item) => new Date(item.updatedAt).toLocaleDateString() }
   };
   const configuredColumns = (config.data?.listColumns?.ITEM ?? ["itemCode", "revisionLabel", "name", "status"]).filter((key) =>
@@ -298,7 +431,59 @@ export function ItemsPage(): JSX.Element {
           ? "Raw Materials"
           : "Formulations";
 
+  function exportCsv(): void {
+    const rows = sortedPagedData as any[];
+    if (!rows.length) return;
+    const isFormula = activeTab === "FORMULA";
+    const headers = isFormula
+      ? ["formulaCode", "version", "name", "recipeType", "status"]
+      : ["itemCode", "revisionLabel", "name", "itemType", "uom", "status", "updatedAt"];
+    const csv = [
+      headers.join(","),
+      ...rows.map((row) =>
+        headers
+          .map((h) => {
+            const val = String(row[h] ?? "").replace(/"/g, '""');
+            return val.includes(",") || val.includes('"') ? `"${val}"` : val;
+          })
+          .join(",")
+      )
+    ].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${listTitle.toLowerCase().replace(/\s+/g, "-")}-export.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleSort(key: string): void {
+    if (sortKey === key) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
+
+  function SortHeader({ label, colKey }: { label: string; colKey: string }) {
+    const active = sortKey === colKey;
+    return (
+      <button type="button" onClick={() => handleSort(colKey)} className="flex items-center gap-1 text-left font-medium hover:text-primary">
+        {label}
+        <span className="text-[10px] text-slate-400">{active ? (sortDir === "asc" ? "▲" : "▼") : "⇅"}</span>
+      </button>
+    );
+  }
+
   const pagedData = activeTab === "FORMULA" ? formulasQuery.data?.data ?? [] : itemsQuery.data?.data ?? [];
+  const sortedPagedData = [...pagedData].sort((a: any, b: any) => {
+    if (!sortKey) return 0;
+    const aVal = String(a[sortKey] ?? "").toLowerCase();
+    const bVal = String(b[sortKey] ?? "").toLowerCase();
+    return sortDir === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+  });
   const total = activeTab === "FORMULA" ? formulasQuery.data?.total ?? 0 : itemsQuery.data?.total ?? 0;
   const pageSize = activeTab === "FORMULA" ? formulasQuery.data?.pageSize ?? 10 : itemsQuery.data?.pageSize ?? 10;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
@@ -307,10 +492,59 @@ export function ItemsPage(): JSX.Element {
     setPage(1);
   }, [activeTab, search, selectedContainerId]);
 
+  useEffect(() => {
+    if (!createOpen) {
+      return;
+    }
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) {
+        return;
+      }
+      if (createPanelRef.current?.contains(target)) {
+        return;
+      }
+      if (createButtonRef.current?.contains(target)) {
+        return;
+      }
+      setCreateOpen(false);
+    };
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setCreateOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onEscape);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onEscape);
+    };
+  }, [createOpen]);
+
   return (
     <div className="space-y-4 rounded-xl bg-white p-4">
-      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+        <button
+          ref={createButtonRef}
+          type="button"
+          onClick={() => setCreateOpen((prev) => !prev)}
+          className="w-full rounded-lg border border-primary bg-primary px-4 py-3 text-left text-sm font-semibold text-white shadow-sm transition hover:bg-[#174766]"
+        >
+          + Create Material
+        </button>
+        <p className="mt-2 text-xs text-slate-500">Auto-number preview: {nextNumber.data?.value ?? "Loading..."}</p>
+      </div>
+
+      {createOpen ? (
+      <div ref={createPanelRef} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
         <h3 className="mb-1 font-heading text-lg">Create Material</h3>
+        {fromNpdProjectId && (
+          <div className="mb-3 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+            <span className="text-base">🔗</span>
+            <span>Creating FG Item for NPD Project <strong>{fromNpdProjectCode}</strong> — {fromNpdProjectName}. After creation it will be automatically linked.</span>
+          </div>
+        )}
         <p className="mb-3 text-xs text-slate-500">If Item Code is blank, auto-numbering will use: {nextNumber.data?.value ?? "Loading..."}</p>
 
         <div className="grid gap-3 md:grid-cols-4">
@@ -376,17 +610,114 @@ export function ItemsPage(): JSX.Element {
           ))}
         </div>
 
+        {form.itemType === "FINISHED_GOOD" ? (
+          <div className="mt-4 space-y-3 rounded border border-slate-200 bg-white p-3">
+            <p className="text-sm font-medium text-slate-700">FG Structure (create with item)</p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <FloatingSelect
+                label="Input Formula *"
+                value={fgStructureForm.formulaId}
+                onChange={(event) => setFgStructureForm((prev) => ({ ...prev, formulaId: event.target.value }))}
+              >
+                <option value="">Select Formula</option>
+                {(formulaOptions.data?.data ?? []).map((formula) => (
+                  <option key={formula.id} value={formula.id}>
+                    {formula.formulaCode} v{formula.version} - {formula.name}
+                  </option>
+                ))}
+              </FloatingSelect>
+              <FloatingInput
+                label="Effective Date"
+                type="date"
+                value={fgStructureForm.effectiveDate}
+                onChange={(event) => setFgStructureForm((prev) => ({ ...prev, effectiveDate: event.target.value }))}
+              />
+            </div>
+            <div className="overflow-x-auto rounded border border-slate-200">
+              <table className="w-full min-w-[640px] text-left text-xs">
+                <thead className="bg-slate-100 text-[11px] uppercase text-slate-500">
+                  <tr>
+                    <th className="px-2 py-2">Line</th>
+                    <th className="px-2 py-2">Packaging Item</th>
+                    <th className="px-2 py-2">Qty</th>
+                    <th className="px-2 py-2">UOM</th>
+                    <th className="px-2 py-2">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fgPackagingLines.map((line, index) => (
+                    <tr key={`${line.lineNumber}-${index}`} className="border-t border-slate-100">
+                      <td className="px-2 py-2">
+                        <input
+                          value={line.lineNumber}
+                          onChange={(event) => updateFgPackagingLine(index, { lineNumber: event.target.value })}
+                          className="w-20 rounded border border-slate-300 px-2 py-1 text-xs"
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <select
+                          value={line.itemId}
+                          onChange={(event) => updateFgPackagingLine(index, { itemId: event.target.value })}
+                          className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                        >
+                          <option value="">Select Packaging</option>
+                          {(packagingOptions.data?.data ?? []).map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.itemCode} - {option.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-2 py-2">
+                        <input
+                          value={line.quantity}
+                          onChange={(event) => updateFgPackagingLine(index, { quantity: event.target.value })}
+                          className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <select
+                          value={line.uom}
+                          onChange={(event) => updateFgPackagingLine(index, { uom: event.target.value })}
+                          className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                        >
+                          {(uomsQuery.data?.data ?? STANDARD_UOMS).map((uom) => (
+                            <option key={uom.value} value={uom.value}>
+                              {uom.value}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-2 py-2">
+                        <button
+                          type="button"
+                          onClick={() => removeFgPackagingLine(index)}
+                          className="rounded border border-slate-300 px-2 py-1 text-[11px]"
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button type="button" onClick={addFgPackagingLine} className="rounded border border-slate-300 bg-white px-3 py-1 text-xs">
+              Add Packaging Line
+            </button>
+          </div>
+        ) : null}
+
         <button
           type="button"
           onClick={() => createItem.mutate()}
-          disabled={!form.name || createItem.isPending}
+          disabled={!form.name || createItem.isPending || (form.itemType === "FINISHED_GOOD" && !fgStructureForm.formulaId)}
           className="mt-3 rounded bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
         >
-          {createItem.isPending ? "Creating..." : "Create Item"}
+          {createItem.isPending ? "Creating..." : form.itemType === "FINISHED_GOOD" ? "Create FG + Structure" : "Create Item"}
         </button>
-
-        {message ? <p className="mt-2 text-sm text-slate-700">{message}</p> : null}
       </div>
+      ) : null}
 
       <div className="flex items-center justify-between">
         <h2 className="font-heading text-xl">Materials & Recipes</h2>
@@ -419,27 +750,32 @@ export function ItemsPage(): JSX.Element {
       {(activeTab === "FORMULA" ? formulasQuery.isLoading : itemsQuery.isLoading) ? (
         <p>Loading {listTitle.toLowerCase()}...</p>
       ) : (
+        <>
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
               {activeTab === "FORMULA" ? (
                 <>
                   <th className="w-10 py-2"> </th>
-                  <th className="py-2">Code</th>
-                  <th className="py-2">Name</th>
+                  <th className="py-2"><SortHeader label="Code" colKey="formulaCode" /></th>
+                  <th className="py-2"><SortHeader label="Name" colKey="name" /></th>
                   <th className="py-2">Type</th>
                   <th className="py-2">Output</th>
-                  <th className="py-2">Status</th>
+                  <th className="py-2"><SortHeader label="Status" colKey="status" /></th>
                   <th className="py-2">Actions</th>
                 </>
               ) : (
                 <>
                   <th className="w-10 py-2"> </th>
-                  {configuredColumns.map((columnKey) => (
-                    <th key={columnKey} className="py-2">
-                      {itemColumnDefs[columnKey]?.label ?? columnKey}
-                    </th>
-                  ))}
+                  {configuredColumns.map((columnKey) => {
+                    const label = itemColumnDefs[columnKey]?.label ?? columnKey;
+                    const sortable = ["itemCode", "name", "status", "updatedAt"].includes(columnKey);
+                    return (
+                      <th key={columnKey} className="py-2">
+                        {sortable ? <SortHeader label={label} colKey={columnKey} /> : label}
+                      </th>
+                    );
+                  })}
                   <th className="py-2">Actions</th>
                 </>
               )}
@@ -447,7 +783,7 @@ export function ItemsPage(): JSX.Element {
           </thead>
           <tbody>
             {activeTab === "FORMULA"
-              ? pagedData.map((formula: any) => (
+              ? sortedPagedData.map((formula: any) => (
                   <tr key={formula.id} className="border-b border-slate-100">
                     <td className="py-2 text-slate-500">
                       <EntityIcon kind="formula" />
@@ -464,7 +800,7 @@ export function ItemsPage(): JSX.Element {
                         ? `${formula.outputItem?.itemCode ?? "N/A"}`
                         : "Formula"}
                     </td>
-                    <td className="py-2">{formula.status}</td>
+                    <td className="py-2"><StatusBadge status={formula.status} /></td>
                     <td className="py-2">
                       <Link to={`/formulas/${formula.id}`} className="rounded border border-slate-300 px-2 py-1 text-xs">
                         Open
@@ -472,7 +808,7 @@ export function ItemsPage(): JSX.Element {
                     </td>
                   </tr>
                 ))
-              : pagedData.map((item: Item) => (
+              : sortedPagedData.map((item: Item) => (
                   <tr key={item.id} className="border-b border-slate-100">
                     <td className="py-2 text-slate-500">
                       <EntityIcon kind="item" variant={item.itemType} />
@@ -480,13 +816,14 @@ export function ItemsPage(): JSX.Element {
                     {configuredColumns.map((columnKey) => {
                       const value = itemColumnDefs[columnKey]?.render(item) ?? "";
                       const isCode = columnKey === "itemCode";
+                      const itemDetailLink = item.itemType === "FINISHED_GOOD" ? `/fg/item/${item.id}` : `/items/${item.id}`;
                       return (
                         <td
                           key={`${item.id}-${columnKey}`}
                           className={`py-2 ${isCode ? "font-mono" : ""}`}
                         >
                           {isCode ? (
-                            <Link to={`/items/${item.id}`} className="text-primary hover:underline">
+                            <Link to={itemDetailLink} className="text-primary hover:underline">
                               {value}
                             </Link>
                           ) : (
@@ -496,7 +833,7 @@ export function ItemsPage(): JSX.Element {
                       );
                     })}
                     <td className="py-2">
-                      <Link to={`/items/${item.id}`} className="rounded border border-slate-300 px-2 py-1 text-xs">
+                      <Link to={item.itemType === "FINISHED_GOOD" ? `/fg/item/${item.id}` : `/items/${item.id}`} className="rounded border border-slate-300 px-2 py-1 text-xs">
                         Open
                       </Link>
                       <button type="button" onClick={() => setSelectedItemId(item.id)} className="ml-2 rounded border border-slate-300 px-2 py-1 text-xs">
@@ -510,12 +847,28 @@ export function ItemsPage(): JSX.Element {
                 ))}
           </tbody>
         </table>
-      )}
+        {sortedPagedData.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+            <p className="font-medium">No {listTitle.toLowerCase()} found</p>
+            <p className="mt-1 text-xs">{search ? "Try a different search term or filter" : `Click "+ Create ${listTitle.replace(/s$/, "")}" above to get started`}</p>
+          </div>
+        ) : null}
 
       <div className="flex items-center justify-between text-sm text-slate-600">
-        <p>
-          {listTitle}: {total} records
-        </p>
+        <div className="flex items-center gap-3">
+          <p>
+            {listTitle}: {total} records
+          </p>
+          <button
+            type="button"
+            onClick={exportCsv}
+            disabled={sortedPagedData.length === 0}
+            title="Export current page to CSV"
+            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-60"
+          >
+            ↓ Export CSV
+          </button>
+        </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -538,6 +891,8 @@ export function ItemsPage(): JSX.Element {
           </button>
         </div>
       </div>
+      </>
+      )}
 
       {selectedItemId ? (
         <div className="fixed inset-0 z-40 flex">
@@ -567,7 +922,7 @@ export function ItemsPage(): JSX.Element {
                   <p className="mb-2 font-medium">Used In BOMs ({itemLinks.data?.bomUsages.length ?? 0})</p>
                   <div className="space-y-1 text-slate-600">
                     {itemLinks.data?.bomUsages.map((usage) => (
-                      <Link key={usage.id} to={`/bom/${usage.bom.id}`} className="block text-primary hover:underline">
+                      <Link key={usage.id} to={`/fg/${usage.bom.id}`} className="block text-primary hover:underline">
                         {usage.bom.bomCode} v{usage.bom.version} ({usage.bom.type}) - {usage.quantity} {usage.uom}
                       </Link>
                     ))}

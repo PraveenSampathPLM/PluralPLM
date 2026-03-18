@@ -3,6 +3,12 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { EntityIcon } from "@/components/entity-icon";
+import { DetailHeaderCard } from "@/components/detail-header-card";
+import { StatusBadge } from "@/components/status-badge";
+import { SignoffHistory } from "@/components/signoff-history";
+import { AffectedObjects } from "@/components/affected-objects";
+import { WorkflowVisualizer, type WorkflowInstanceFull } from "@/components/workflow-visualizer";
+import { toast } from "sonner";
 
 interface ChangeDetail {
   id: string;
@@ -12,22 +18,16 @@ interface ChangeDetail {
   type: string;
   priority: string;
   status: string;
+  targetAction: "RELEASE" | "OBSOLETE";
   impactAssessment?: string | null;
   containerId?: string | null;
-}
-
-interface WorkflowInstance {
-  id: string;
-  currentState: string;
-  definition?: { name: string };
 }
 
 export function ChangeDetailPage(): JSX.Element {
   const params = useParams();
   const changeId = String(params.id ?? "");
   const queryClient = useQueryClient();
-  const [message, setMessage] = useState("");
-  const [activeTab, setActiveTab] = useState<"details" | "workflow">("details");
+  const [activeTab, setActiveTab] = useState<"details" | "affected" | "workflow" | "signoff">("details");
 
   const change = useQuery({
     queryKey: ["change-detail", changeId],
@@ -39,7 +39,7 @@ export function ChangeDetailPage(): JSX.Element {
     queryKey: ["change-workflow", changeId],
     queryFn: async () =>
       (
-        await api.get<{ data: WorkflowInstance[] }>("/workflows/instances", {
+        await api.get<{ data: WorkflowInstanceFull[] }>("/workflows/instances", {
           params: { entityType: "CHANGE_REQUEST", entityId: changeId }
         })
       ).data,
@@ -51,6 +51,7 @@ export function ChangeDetailPage(): JSX.Element {
     description: "",
     type: "ECR",
     priority: "MEDIUM",
+    targetAction: "" as "" | "RELEASE" | "OBSOLETE",
     impactAssessment: ""
   });
 
@@ -61,9 +62,9 @@ export function ChangeDetailPage(): JSX.Element {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["change-detail", changeId] });
       await queryClient.invalidateQueries({ queryKey: ["changes"] });
-      setMessage("Change request updated.");
+      toast.success("Change request saved.");
     },
-    onError: (error) => setMessage(error instanceof Error ? error.message : "Update failed")
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Update failed")
   });
 
   if (change.isLoading) {
@@ -79,23 +80,18 @@ export function ChangeDetailPage(): JSX.Element {
 
   return (
     <div className="space-y-4 rounded-xl bg-white p-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="rounded-full bg-slate-100 p-2">
-            <EntityIcon kind="change" size={20} />
-          </div>
-          <div>
-            <p className="font-mono text-sm text-slate-500">{data.crNumber}</p>
-            <h2 className="font-heading text-xl">{data.title}</h2>
-            <p className="text-sm text-slate-500">{data.type} | {data.priority} | {data.status}</p>
-          </div>
-        </div>
-        <Link to="/changes" className="rounded border border-slate-300 bg-white px-3 py-1 text-sm">
-          Back to Changes
-        </Link>
+      <DetailHeaderCard
+        icon={<EntityIcon kind="change" size={20} />}
+        code={data.crNumber}
+        title={data.title}
+        meta={`${data.type} | ${data.priority} | Target: ${data.targetAction ?? "RELEASE"}`}
+        backTo="/changes"
+        backLabel="Back to Changes"
+      />
+      <div className="flex items-center gap-2 text-sm text-slate-500">
+        <span>Status</span>
+        <StatusBadge status={data.status} />
       </div>
-
-      {message ? <p className="rounded border border-slate-200 bg-slate-50 p-2 text-sm text-slate-700">{message}</p> : null}
 
       <div className="flex items-center gap-2 border-b border-slate-200 text-sm">
         <button
@@ -107,10 +103,24 @@ export function ChangeDetailPage(): JSX.Element {
         </button>
         <button
           type="button"
+          onClick={() => setActiveTab("affected")}
+          className={`px-3 py-2 ${activeTab === "affected" ? "border-b-2 border-primary font-medium text-primary" : "text-slate-500"}`}
+        >
+          Affected Objects
+        </button>
+        <button
+          type="button"
           onClick={() => setActiveTab("workflow")}
           className={`px-3 py-2 ${activeTab === "workflow" ? "border-b-2 border-primary font-medium text-primary" : "text-slate-500"}`}
         >
           Workflow
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("signoff")}
+          className={`px-3 py-2 ${activeTab === "signoff" ? "border-b-2 border-primary font-medium text-primary" : "text-slate-500"}`}
+        >
+          Signoff History
         </button>
       </div>
 
@@ -154,6 +164,44 @@ export function ChangeDetailPage(): JSX.Element {
               <option value="HIGH">HIGH</option>
               <option value="CRITICAL">CRITICAL</option>
             </select>
+            <div className="md:col-span-2">
+              <p className="mb-1.5 text-xs font-medium text-slate-600">Target Action</p>
+              <div className="flex gap-4">
+                {(["RELEASE", "OBSOLETE"] as const).map((action) => {
+                  const active = (form.targetAction || data.targetAction) === action;
+                  return (
+                    <label
+                      key={action}
+                      className={`flex cursor-pointer items-start gap-2 rounded border px-3 py-2 text-sm transition-colors ${
+                        active
+                          ? action === "RELEASE"
+                            ? "border-green-500 bg-green-50 text-green-800"
+                            : "border-orange-400 bg-orange-50 text-orange-800"
+                          : "border-slate-200 bg-white text-slate-600"
+                      } ${!canEdit ? "cursor-not-allowed opacity-60" : ""}`}
+                    >
+                      <input
+                        type="radio"
+                        name="targetAction"
+                        value={action}
+                        checked={active}
+                        disabled={!canEdit}
+                        onChange={() => setForm({ ...form, targetAction: action })}
+                        className="mt-0.5"
+                      />
+                      <div>
+                        <p className="font-medium">{action === "RELEASE" ? "Release" : "Obsolete"}</p>
+                        <p className="text-xs opacity-75">
+                          {action === "RELEASE"
+                            ? "Affected objects will be promoted to RELEASED when approved"
+                            : "Affected objects will be marked OBSOLETE when approved"}
+                        </p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
             <input
               value={form.impactAssessment || data.impactAssessment || ""}
               onChange={(event) => setForm({ ...form, impactAssessment: event.target.value })}
@@ -168,13 +216,15 @@ export function ChangeDetailPage(): JSX.Element {
               onClick={() =>
                 updateChange.mutate({
                   title: form.title || data.title,
-                  description: form.description || data.description,
+                  description: form.description ?? data.description ?? null,
                   type: form.type || data.type,
                   priority: form.priority || data.priority,
-                  impactAssessment: form.impactAssessment || data.impactAssessment
+                  targetAction: form.targetAction || data.targetAction,
+                  impactAssessment: form.impactAssessment ?? data.impactAssessment ?? null
                 })
               }
               disabled={!canEdit || updateChange.isPending}
+              title={!canEdit ? "This change is locked once submitted — create a new ECR to make further changes" : undefined}
               className="rounded bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
             >
               {updateChange.isPending ? "Saving..." : "Save Changes"}
@@ -183,6 +233,7 @@ export function ChangeDetailPage(): JSX.Element {
               type="button"
               onClick={() => updateChange.mutate({ status: "SUBMITTED" })}
               disabled={!canEdit || updateChange.isPending}
+              title={!canEdit ? "Already submitted — cannot resubmit" : undefined}
               className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-60"
             >
               Submit for Workflow
@@ -190,46 +241,26 @@ export function ChangeDetailPage(): JSX.Element {
           </div>
           {!canEdit ? <p className="mt-2 text-xs text-slate-500">Editing is locked once submitted.</p> : null}
         </div>
+      ) : activeTab === "affected" ? (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <h3 className="mb-1 font-heading text-lg">Affected Objects</h3>
+          <p className="mb-4 text-sm text-slate-500">Items and formulas undergoing this change.</p>
+          <AffectedObjects entityId={changeId} entityType="CHANGE_REQUEST" canEdit={canEdit} />
+        </div>
+      ) : activeTab === "workflow" ? (
+        <div className="space-y-1">
+          <WorkflowVisualizer
+            instance={workflow.data?.data?.[0]}
+            loading={workflow.isLoading}
+            entityStatus={data.status}
+            entityLabel="change request"
+          />
+        </div>
       ) : (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
-          <h3 className="mb-3 font-heading text-lg">Workflow Status</h3>
-          {workflow.data?.data?.length ? (
-            (() => {
-              const wf = workflow.data?.data?.[0];
-              const assignments = (wf?.definition as any)?.actions?.stateAssignments?.[wf.currentState] ?? {};
-              const roles = assignments.roles ?? [];
-              const slaHours = typeof assignments.slaHours === "number" ? assignments.slaHours : null;
-              const entryRule = typeof assignments.entryRule === "string" ? assignments.entryRule : "";
-              const description = typeof assignments.description === "string" ? assignments.description : "";
-              return (
-                <div className="space-y-2">
-                  <p className="text-slate-700">
-                    {wf?.definition?.name ?? "Workflow"}:{" "}
-                    <span className="rounded-full bg-white px-2 py-0.5 text-xs text-slate-700">{wf?.currentState}</span>
-                  </p>
-                  <p className="text-xs text-slate-600">Assigned Roles: {roles.length ? roles.join(", ") : "Unassigned"}</p>
-                  {slaHours !== null ? <p className="text-xs text-slate-600">SLA: {slaHours} hours</p> : null}
-                  {entryRule ? <p className="text-xs text-slate-600">Entry Rule: {entryRule}</p> : null}
-                  {description ? <p className="text-xs text-slate-600">Task: {description}</p> : null}
-                </div>
-              );
-            })()
-          ) : (
-            <div className="space-y-2">
-              <p className="text-slate-500">Not started yet.</p>
-              {data.status === "SUBMITTED" ? (
-                <button
-                  type="button"
-                  onClick={() => updateChange.mutate({ status: "SUBMITTED" })}
-                  className="rounded border border-slate-300 bg-white px-3 py-1 text-xs"
-                >
-                  Start Workflow
-                </button>
-              ) : (
-                <p className="text-xs text-slate-500">Submit the change to start workflow.</p>
-              )}
-            </div>
-          )}
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <h3 className="mb-3 font-heading text-lg">Signoff History</h3>
+          <p className="mb-4 text-sm text-slate-500">Complete audit trail of workflow tasks — who was assigned, what action was taken, and the signoff comment.</p>
+          <SignoffHistory entityId={changeId} entityType="CHANGE_REQUEST" />
         </div>
       )}
     </div>

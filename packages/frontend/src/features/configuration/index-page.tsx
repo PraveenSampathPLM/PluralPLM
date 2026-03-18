@@ -7,6 +7,7 @@ const configLinks = [
   { to: "/configuration/attributes", title: "Custom Attributes", description: "Manage item attribute definitions." },
   { to: "/configuration/uoms", title: "Units of Measure", description: "Standardize UOM list across the app." },
   { to: "/configuration/mail", title: "Mail Server", description: "Configure SMTP for workflow notifications." },
+  { to: "/configuration/server-stats", title: "Server Stats", description: "View runtime health, resource usage, and login activity." },
   { to: "/configuration/workflows", title: "Workflow Designer", description: "Build release and change workflows." }
 ];
 

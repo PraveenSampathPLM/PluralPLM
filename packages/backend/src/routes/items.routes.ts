@@ -6,6 +6,7 @@ import { z } from "zod";
 import { allocateNextSequenceValue } from "../services/config-store.service.js";
 import { formatRevisionLabel, getRevisionScheme } from "../services/revision.service.js";
 import { ensureContainerAccess, getAccessibleContainerIds, isGlobalAdmin } from "../services/container-access.service.js";
+import { checkoutEntity, checkinEntity, undoCheckout, reviseEntity } from "../services/versioning.service.js";
 
 const router = Router();
 
@@ -26,7 +27,7 @@ const createItemSchema = z.object({
   boilingPoint: z.number().optional(),
   containerId: z.string().optional(),
   customAttributes: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
-  status: z.enum(["DRAFT", "ACTIVE", "OBSOLETE", "UNDER_CHANGE"]).default("DRAFT")
+  status: z.enum(["IN_WORK", "UNDER_REVIEW", "RELEASED"]).default("IN_WORK")
 });
 
 async function ensureItemAccess(
@@ -109,7 +110,7 @@ router.get("/", async (req, res, next) => {
           }
 
           const path = ["customAttributes", entry.key];
-          const jsonFilter: Prisma.JsonFilter = { path };
+          const jsonFilter = { path } as Prisma.JsonFilter;
           switch (op) {
             case "contains":
               jsonFilter.string_contains = String(value);
@@ -138,7 +139,8 @@ router.get("/", async (req, res, next) => {
           if (attributeBoolean === "OR") {
             where.OR = [...(where.OR ?? []), ...clauses];
           } else {
-            where.AND = [...(where.AND ?? []), ...clauses];
+            const existingAnd = where.AND ? (Array.isArray(where.AND) ? where.AND : [where.AND]) : [];
+            where.AND = [...existingAnd, ...clauses];
           }
         }
       } catch (error) {
@@ -180,7 +182,7 @@ router.post("/", async (req, res, next) => {
     }
     const sequenceEntity =
       parsed.itemType === "FINISHED_GOOD" ? "ITEM_FINISHED_GOOD" : parsed.itemType === "PACKAGING" ? "ITEM_PACKAGING" : "ITEM";
-    const itemCode = parsed.itemCode ?? (await allocateNextSequenceValue(sequenceEntity));
+    const itemCode = parsed.itemCode ?? (await allocateNextSequenceValue(sequenceEntity, parsed.containerId));
     const revisionScheme = await getRevisionScheme("ITEM");
     const revisionMajor = 1;
     const revisionIteration = 1;
@@ -231,7 +233,10 @@ router.post("/", async (req, res, next) => {
 
 router.get("/:id", async (req, res, next) => {
   try {
-    const item = await prisma.item.findUnique({ where: { id: req.params.id } });
+    const item = await prisma.item.findUnique({
+      where: { id: req.params.id },
+      include: { checkedOutBy: { select: { id: true, name: true } } }
+    });
     if (!item) {
       res.status(404).json({ message: "Item not found" });
       return;
@@ -423,31 +428,42 @@ router.post("/:id/copy", async (req, res, next) => {
 
     const sequenceEntity =
       source.itemType === "FINISHED_GOOD" ? "ITEM_FINISHED_GOOD" : source.itemType === "PACKAGING" ? "ITEM_PACKAGING" : "ITEM";
-    const itemCode = await allocateNextSequenceValue(sequenceEntity);
     const revisionScheme = await getRevisionScheme("ITEM");
     const revisionMajor = 1;
     const revisionIteration = 1;
-    const copied = await prisma.item.create({
-      data: {
-        itemCode,
-        revisionMajor,
-        revisionIteration,
-        revisionLabel: formatRevisionLabel(revisionMajor, revisionIteration, revisionScheme),
-        name: `${source.name} Copy`,
-        description: source.description,
-        industryType: source.industryType,
-        itemType: source.itemType,
-        uom: source.uom,
-        density: source.density,
-        viscosity: source.viscosity,
-        pH: source.pH,
-        flashPoint: source.flashPoint,
-        containerId: source.containerId,
-        regulatoryFlags: source.regulatoryFlags ?? Prisma.JsonNull,
-        attributes: source.attributes ?? Prisma.JsonNull,
-        status: "DRAFT"
+    let copied: Awaited<ReturnType<typeof prisma.item.create>> | undefined;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const itemCode = await allocateNextSequenceValue(sequenceEntity, source.containerId);
+      try {
+        copied = await prisma.item.create({
+          data: {
+            itemCode,
+            revisionMajor,
+            revisionIteration,
+            revisionLabel: formatRevisionLabel(revisionMajor, revisionIteration, revisionScheme),
+            name: `${source.name} Copy`,
+            description: source.description,
+            industryType: source.industryType,
+            itemType: source.itemType,
+            uom: source.uom,
+            density: source.density,
+            viscosity: source.viscosity,
+            pH: source.pH,
+            flashPoint: source.flashPoint,
+            containerId: source.containerId,
+            regulatoryFlags: source.regulatoryFlags ?? Prisma.JsonNull,
+            attributes: source.attributes ?? Prisma.JsonNull,
+            status: "IN_WORK"
+          }
+        });
+        break;
+      } catch (err: unknown) {
+        const prismaErr = err as { code?: string };
+        if (prismaErr?.code === "P2002" && attempt < 4) continue;
+        throw err;
       }
-    });
+    }
+    if (!copied) throw new Error("Failed to allocate a unique item code for copy");
     const actorId = req.user?.sub;
     await writeAuditLog({
       entityType: "ITEM",
@@ -498,7 +514,7 @@ router.post("/:id/revise", async (req, res, next) => {
           containerId: source.containerId,
           regulatoryFlags: source.regulatoryFlags ?? Prisma.JsonNull,
           attributes: source.attributes ?? Prisma.JsonNull,
-          status: "DRAFT"
+          status: "IN_WORK"
         }
       });
 
@@ -507,7 +523,7 @@ router.post("/:id/revise", async (req, res, next) => {
         await tx.specification.createMany({
           data: specs.map((spec) => ({
             itemId: created.id,
-            containerId: spec.containerId ?? source.containerId ?? undefined,
+            containerId: spec.containerId ?? source.containerId ?? null,
             specType: spec.specType,
             attribute: spec.attribute,
             value: spec.value ?? null,
@@ -560,11 +576,11 @@ router.post("/:id/check-out", async (req, res, next) => {
       res.status(403).json({ message: "Forbidden" });
       return;
     }
-    if (existing.status !== "DRAFT") {
-      res.status(400).json({ message: "Checkout is only allowed for items in DRAFT status." });
+    if (existing.status !== "IN_WORK") {
+      res.status(400).json({ message: "Checkout is only allowed for items in IN_WORK status." });
       return;
     }
-    const updated = await prisma.item.update({ where: { id: itemId }, data: { status: "UNDER_CHANGE" } });
+    const updated = await prisma.item.update({ where: { id: itemId }, data: { status: "UNDER_REVIEW" } });
     const actorId = req.user?.sub;
     await writeAuditLog({
       entityType: "ITEM",
@@ -592,8 +608,8 @@ router.post("/:id/check-in", async (req, res, next) => {
       res.status(403).json({ message: "Forbidden" });
       return;
     }
-    if (existing.status !== "UNDER_CHANGE") {
-      res.status(400).json({ message: "Check-in is only allowed for items that are checked out." });
+    if (existing.status !== "UNDER_REVIEW") {
+      res.status(400).json({ message: "Check-in is only allowed for items that are under review." });
       return;
     }
     const revisionScheme = await getRevisionScheme("ITEM");
@@ -602,7 +618,7 @@ router.post("/:id/check-in", async (req, res, next) => {
     const updated = await prisma.item.update({
       where: { id: itemId },
       data: {
-        status: "ACTIVE",
+        status: "RELEASED",
         revisionIteration,
         revisionLabel: formatRevisionLabel(revisionMajor, revisionIteration, revisionScheme)
       }
@@ -634,6 +650,10 @@ router.delete("/:id", async (req, res, next) => {
       res.status(403).json({ message: "Forbidden" });
       return;
     }
+    if (existing.status === "RELEASED") {
+      res.status(409).json({ message: "Cannot delete a Released item. Obsolete the item first." });
+      return;
+    }
     await prisma.item.delete({ where: { id: itemId } });
     const actorId = req.user?.sub;
     await writeAuditLog({
@@ -645,6 +665,60 @@ router.delete("/:id", async (req, res, next) => {
     });
     res.status(204).send();
   } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/:id/checkout", async (req, res, next) => {
+  try {
+    const userId = req.user?.sub;
+    if (!userId) { res.status(401).json({ message: "Unauthorized" }); return; }
+    const result = await checkoutEntity("ITEM", req.params.id, userId);
+    res.json(result);
+  } catch (error: unknown) {
+    const e = error as { statusCode?: number; message?: string };
+    if (e.statusCode) { res.status(e.statusCode).json({ message: e.message }); return; }
+    next(error);
+  }
+});
+
+router.post("/:id/checkin", async (req, res, next) => {
+  try {
+    const userId = req.user?.sub;
+    if (!userId) { res.status(401).json({ message: "Unauthorized" }); return; }
+    const result = await checkinEntity("ITEM", req.params.id, userId, req.body ?? {});
+    res.json(result);
+  } catch (error: unknown) {
+    const e = error as { statusCode?: number; message?: string };
+    if (e.statusCode) { res.status(e.statusCode).json({ message: e.message }); return; }
+    next(error);
+  }
+});
+
+router.post("/:id/undo-checkout", async (req, res, next) => {
+  try {
+    const userId = req.user?.sub;
+    const userRole = req.user?.role ?? "";
+    if (!userId) { res.status(401).json({ message: "Unauthorized" }); return; }
+    const isAdmin = ["System Admin", "PLM Admin", "Container Admin"].includes(userRole);
+    const result = await undoCheckout("ITEM", req.params.id, userId, isAdmin);
+    res.json(result);
+  } catch (error: unknown) {
+    const e = error as { statusCode?: number; message?: string };
+    if (e.statusCode) { res.status(e.statusCode).json({ message: e.message }); return; }
+    next(error);
+  }
+});
+
+router.post("/:id/revise-versioned", async (req, res, next) => {
+  try {
+    const userId = req.user?.sub;
+    if (!userId) { res.status(401).json({ message: "Unauthorized" }); return; }
+    const result = await reviseEntity("ITEM", req.params.id, userId);
+    res.json(result);
+  } catch (error: unknown) {
+    const e = error as { statusCode?: number; message?: string };
+    if (e.statusCode) { res.status(e.statusCode).json({ message: e.message }); return; }
     next(error);
   }
 });
@@ -666,7 +740,7 @@ router.get("/:id/links", async (req, res, next) => {
       return;
     }
 
-    const [formulaUsages, bomUsages, specifications, relatedChanges, workflows] = await Promise.all([
+    const [formulaUsages, fgPackagingUsages, specifications, relatedChanges, workflows] = await Promise.all([
       prisma.formulaIngredient.findMany({
         where: { itemId, formula: { industryType: item.industryType } },
         include: {
@@ -676,25 +750,22 @@ router.get("/:id/links", async (req, res, next) => {
         },
         orderBy: [{ formula: { formulaCode: "asc" } }, { additionSequence: "asc" }]
       }),
-      prisma.bOMLine.findMany({
+      prisma.fGPackagingLine.findMany({
         where: {
           itemId,
-          bom: {
-            OR: [{ formula: { industryType: item.industryType } }, { formulaId: null }]
+          fgStructure: {
+            formula: { industryType: item.industryType }
           }
         },
         include: {
-          bom: {
-            select: {
-              id: true,
-              bomCode: true,
-              version: true,
-              type: true,
+          fgStructure: {
+            include: {
+              fgItem: { select: { id: true, itemCode: true, name: true } },
               formula: { select: { id: true, formulaCode: true, version: true, name: true } }
             }
           }
         },
-        orderBy: [{ bom: { bomCode: "asc" } }, { bom: { version: "desc" } }]
+        orderBy: [{ fgStructure: { version: "desc" } }, { lineNumber: "asc" }]
       }),
       prisma.specification.findMany({
         where: { itemId },
@@ -731,6 +802,26 @@ router.get("/:id/links", async (req, res, next) => {
       })
     ]);
 
+    const bomUsages = fgPackagingUsages.map((line) => ({
+      id: line.id,
+      quantity: line.quantity,
+      uom: line.uom,
+      bom: {
+        id: line.fgStructure.id,
+        bomCode: `${line.fgStructure.fgItem.itemCode}-FG-BOM`,
+        version: line.fgStructure.version,
+        type: "FG_BOM",
+        formula: line.fgStructure.formula
+          ? {
+              id: line.fgStructure.formula.id,
+              formulaCode: line.fgStructure.formula.formulaCode,
+              version: line.fgStructure.formula.version,
+              name: line.fgStructure.formula.name
+            }
+          : null
+      }
+    }));
+
     res.json({
       item,
       formulaUsages,
@@ -738,6 +829,284 @@ router.get("/:id/links", async (req, res, next) => {
       specifications,
       relatedChanges,
       workflows
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/:id/product-thread", async (req, res, next) => {
+  try {
+    const itemId = String(req.params.id ?? "");
+    const item = await prisma.item.findUnique({
+      where: { id: itemId },
+      select: { id: true, itemCode: true, name: true, itemType: true, status: true, revisionLabel: true, containerId: true }
+    });
+    if (!item) {
+      res.status(404).json({ message: "Item not found" });
+      return;
+    }
+    if (item.itemType !== "FINISHED_GOOD") {
+      res.status(400).json({ message: "Product Digital Thread is only available for Finished Good items." });
+      return;
+    }
+    const hasAccess = await ensureItemAccess(req, item.containerId, "READ");
+    if (!hasAccess) {
+      res.status(403).json({ message: "Forbidden" });
+      return;
+    }
+
+    const [fgStructures, artworks, documentLinks, specifications, changes, releases] = await Promise.all([
+      prisma.fGStructure.findMany({
+        where: { fgItemId: itemId },
+        include: {
+          formula: {
+            select: {
+              id: true,
+              formulaCode: true,
+              version: true,
+              name: true,
+              status: true,
+              ingredients: { select: { id: true } }
+            }
+          },
+          packagingLines: { select: { id: true } }
+        },
+        orderBy: { version: "desc" }
+      }),
+      prisma.artwork.findMany({
+        where: { fgItemId: itemId },
+        include: {
+          _count: { select: { files: true, components: true } },
+          files: { select: { fileType: true } }
+        },
+        orderBy: { updatedAt: "desc" }
+      }),
+      prisma.documentLink.findMany({
+        where: { entityType: "ITEM", entityId: itemId },
+        include: {
+          document: { select: { id: true, docNumber: true, name: true, docType: true, status: true } }
+        }
+      }),
+      prisma.specification.findMany({
+        where: { itemId },
+        select: { id: true, specType: true, attribute: true }
+      }),
+      prisma.changeRequest.findMany({
+        where: { affectedItems: { has: item.itemCode } },
+        select: { id: true, crNumber: true, title: true, priority: true, status: true, updatedAt: true },
+        orderBy: { updatedAt: "desc" }
+      }),
+      prisma.releaseRequest.findMany({
+        where: { targetItems: { has: item.itemCode } },
+        select: { id: true, rrNumber: true, title: true, status: true, updatedAt: true },
+        orderBy: { updatedAt: "desc" }
+      })
+    ]);
+
+    // Derive unique formulas from FG structures
+    const formulaMap = new Map<string, { id: string; formulaCode: string; version: number; name: string; status: string; ingredientCount: number }>();
+    for (const fg of fgStructures) {
+      if (fg.formula && !formulaMap.has(fg.formula.id)) {
+        formulaMap.set(fg.formula.id, {
+          id: fg.formula.id,
+          formulaCode: fg.formula.formulaCode,
+          version: fg.formula.version,
+          name: fg.formula.name,
+          status: fg.formula.status,
+          ingredientCount: fg.formula.ingredients.length
+        });
+      }
+    }
+    const formulaItems = Array.from(formulaMap.values());
+
+    // Completeness scoring
+    const actionItems: Array<{ nodeType: string; severity: "HIGH" | "MEDIUM" | "LOW"; message: string }> = [];
+
+    // Formula node (20 pts)
+    let formulaScore = 0;
+    const formulaIssues: string[] = [];
+    if (formulaItems.length > 0) {
+      formulaScore += 10;
+      const hasIngredients = formulaItems.some((f) => f.ingredientCount > 0);
+      if (hasIngredients) formulaScore += 5;
+      else { formulaIssues.push("No ingredients defined in formula"); actionItems.push({ nodeType: "formula", severity: "HIGH", message: "Formula has no ingredients." }); }
+      const hasReleased = formulaItems.some((f) => f.status === "RELEASED");
+      if (hasReleased) formulaScore += 5;
+      else { formulaIssues.push("No released formula version"); actionItems.push({ nodeType: "formula", severity: "MEDIUM", message: "Formula has not been released." }); }
+    } else {
+      formulaIssues.push("No formula linked");
+      actionItems.push({ nodeType: "formula", severity: "HIGH", message: "No formula linked to this product." });
+    }
+
+    // FG Structure node (20 pts)
+    let fgScore = 0;
+    const fgIssues: string[] = [];
+    if (fgStructures.length > 0) {
+      fgScore += 10;
+      const hasPackaging = fgStructures.some((fg) => fg.packagingLines.length > 0);
+      if (hasPackaging) fgScore += 5;
+      else { fgIssues.push("No packaging lines defined"); actionItems.push({ nodeType: "fgStructure", severity: "MEDIUM", message: "FG Structure has no packaging lines." }); }
+      const hasReleased = fgStructures.some((fg) => fg.status === "RELEASED");
+      if (hasReleased) fgScore += 5;
+      else { fgIssues.push("No released FG structure"); actionItems.push({ nodeType: "fgStructure", severity: "MEDIUM", message: "FG Structure has not been released." }); }
+    } else {
+      fgIssues.push("No FG structure created");
+      actionItems.push({ nodeType: "fgStructure", severity: "HIGH", message: "No Finished Good structure defined." });
+    }
+
+    // Artwork node (20 pts)
+    let artworkScore = 0;
+    const artworkIssues: string[] = [];
+    if (artworks.length > 0) {
+      artworkScore += 10;
+      const hasApproved = artworks.some((a) => a.status === "APPROVED" || a.status === "RELEASED");
+      if (hasApproved) artworkScore += 5;
+      else { artworkIssues.push("No approved artwork"); actionItems.push({ nodeType: "artwork", severity: "MEDIUM", message: "No artwork has been approved or released." }); }
+      const hasFinalFiles = artworks.some((a) => a.files.some((f) => f.fileType === "FINAL"));
+      if (hasFinalFiles) artworkScore += 5;
+      else { artworkIssues.push("No final artwork files uploaded"); actionItems.push({ nodeType: "artwork", severity: "LOW", message: "No final artwork files uploaded." }); }
+    } else {
+      artworkIssues.push("No artwork linked");
+      actionItems.push({ nodeType: "artwork", severity: "MEDIUM", message: "No artwork linked to this product." });
+    }
+
+    // Documents node (15 pts)
+    let docScore = 0;
+    const docIssues: string[] = [];
+    const docItems = documentLinks.map((dl) => dl.document);
+    if (docItems.length > 0) {
+      docScore += 10;
+      const hasRegulatory = docItems.some((d) => ["SDS", "COA", "REGULATORY", "SPECIFICATION"].includes(d.docType));
+      if (hasRegulatory) docScore += 5;
+      else { docIssues.push("No regulatory document linked"); actionItems.push({ nodeType: "documents", severity: "LOW", message: "No regulatory or specification document linked." }); }
+    } else {
+      docIssues.push("No documents linked");
+      actionItems.push({ nodeType: "documents", severity: "MEDIUM", message: "No documents linked to this product." });
+    }
+
+    // Specifications node (15 pts)
+    let specScore = 0;
+    const specIssues: string[] = [];
+    if (specifications.length > 0) {
+      specScore += 10;
+      if (specifications.length >= 3) specScore += 5;
+      else { specIssues.push("Fewer than 3 specifications defined"); actionItems.push({ nodeType: "specifications", severity: "LOW", message: "Consider adding more specification attributes." }); }
+    } else {
+      specIssues.push("No specifications defined");
+      actionItems.push({ nodeType: "specifications", severity: "HIGH", message: "No quality specifications defined for this product." });
+    }
+
+    // Releases node (10 pts)
+    let releaseScore = 0;
+    const hasReleasedRelease = releases.some((r) => r.status === "RELEASED" || r.status === "APPROVED");
+    if (hasReleasedRelease) releaseScore += 10;
+    else if (releases.length === 0) actionItems.push({ nodeType: "releases", severity: "LOW", message: "No release request created for this product." });
+
+    const overallCompleteness = formulaScore + fgScore + artworkScore + docScore + specScore + releaseScore;
+
+    // Changes: open and critical counts
+    const openChanges = changes.filter((c) => !["IMPLEMENTED", "REJECTED"].includes(c.status));
+    const criticalChanges = openChanges.filter((c) => c.priority === "CRITICAL" || c.priority === "HIGH");
+
+    res.json({
+      item: { id: item.id, itemCode: item.itemCode, name: item.name, itemType: item.itemType, status: item.status, revisionLabel: item.revisionLabel },
+      overallCompleteness,
+      actionItems,
+      nodes: {
+        formula: {
+          count: formulaItems.length,
+          completeness: formulaScore,
+          maxScore: 20,
+          issues: formulaIssues,
+          items: formulaItems
+        },
+        fgStructure: {
+          count: fgStructures.length,
+          completeness: fgScore,
+          maxScore: 20,
+          issues: fgIssues,
+          items: fgStructures.map((fg) => ({
+            id: fg.id,
+            version: fg.version,
+            revisionLabel: fg.revisionLabel,
+            status: fg.status,
+            packagingLineCount: fg.packagingLines.length,
+            formulaCode: fg.formula?.formulaCode ?? null,
+            effectiveDate: fg.effectiveDate
+          }))
+        },
+        artwork: {
+          count: artworks.length,
+          completeness: artworkScore,
+          maxScore: 20,
+          issues: artworkIssues,
+          items: artworks.map((a) => ({
+            id: a.id,
+            artworkCode: a.artworkCode,
+            title: a.title,
+            status: a.status,
+            revisionLabel: a.revisionLabel,
+            fileCount: a._count.files,
+            componentCount: a._count.components
+          }))
+        },
+        documents: {
+          count: docItems.length,
+          completeness: docScore,
+          maxScore: 15,
+          issues: docIssues,
+          items: docItems
+        },
+        specifications: {
+          count: specifications.length,
+          completeness: specScore,
+          maxScore: 15,
+          issues: specIssues
+        },
+        changes: {
+          openCount: openChanges.length,
+          criticalCount: criticalChanges.length,
+          items: changes
+        },
+        releases: {
+          latestStatus: releases[0]?.status ?? null,
+          items: releases
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/items/:id/audit — fetch audit log entries for this item
+router.get("/:id/audit", async (req, res, next) => {
+  try {
+    const userId = req.user?.sub;
+    if (!userId) { res.status(401).json({ message: "Unauthorized" }); return; }
+    const item = await prisma.item.findUnique({ where: { id: req.params.id } });
+    if (!item) { res.status(404).json({ message: "Item not found" }); return; }
+    const hasAccess = await ensureItemAccess(req, item.containerId, "READ");
+    if (!hasAccess) { res.status(403).json({ message: "Forbidden" }); return; }
+    const entries = await prisma.auditLog.findMany({
+      where: { entityType: "ITEM", entityId: req.params.id },
+      orderBy: { createdAt: "desc" },
+      take: 50
+    });
+    const actorIds = [...new Set(entries.map((e) => e.actorId).filter(Boolean))] as string[];
+    const actors = actorIds.length
+      ? await prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } })
+      : [];
+    const actorMap = new Map(actors.map((a) => [a.id, a.name]));
+    res.json({
+      data: entries.map((e) => ({
+        id: e.id,
+        action: e.action,
+        actorId: e.actorId,
+        actorName: e.actorId ? (actorMap.get(e.actorId) ?? e.actorId) : "System",
+        createdAt: e.createdAt
+      }))
     });
   } catch (error) {
     next(error);

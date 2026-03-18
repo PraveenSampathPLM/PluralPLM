@@ -1,6 +1,7 @@
 node_modules
 .env
 .env.local
+.env.production
 *.log
 dist
 build
@@ -8,3 +9,10 @@ coverage
 .DS_Store
 *.tsbuildinfo
 .prisma
+.aider*
+packages/frontend/src/**/*.js
+packages/frontend/src/**/*.js.map
+packages/frontend/src/**/*.d.ts
+# Uploaded files — keep the directory but not its contents
+packages/backend/storage/*
+!packages/backend/storage/.gitkeep

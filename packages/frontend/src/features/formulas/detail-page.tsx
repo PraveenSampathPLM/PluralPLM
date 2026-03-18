@@ -1,9 +1,13 @@
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { STANDARD_UOMS } from "@/lib/uom";
 import { EntityIcon } from "@/components/entity-icon";
+import { DetailHeaderCard } from "@/components/detail-header-card";
+import { StatusBadge } from "@/components/status-badge";
+import { CheckoutBar } from "@/components/checkout-bar";
+import { toast } from "sonner";
 
 type RecipeType = "FORMULA_RECIPE" | "FINISHED_GOOD_RECIPE";
 type InputSourceType = "ITEM" | "FORMULA";
@@ -16,6 +20,9 @@ interface FormulaDetail {
  status: string;
  recipeType: RecipeType;
  industryType?: string;
+ checkedOutById?: string | null;
+ checkedOutBy?: { id: string; name: string } | null;
+ checkedOutAt?: string | null;
  outputItem?: { id: string; itemCode: string; name: string; itemType: string } | null;
  ingredients?: Array<{
   id: string;
@@ -30,7 +37,7 @@ interface FormulaDetail {
 
 interface FormulaLinksResponse {
  boms: Array<{ id: string; bomCode: string; version: number; type: string }>;
- specifications: Array<{ id: string; specType: string; attribute: string; value?: string | null; minValue?: number | null; maxValue?: number | null; uom?: string | null }>;
+ specifications: Array<{ id: string; specType: string; attribute: string; value?: string | null; minValue?: number | null; maxValue?: number | null; uom?: string | null; testMethod?: string | null }>;
  relatedChanges: Array<{ id: string; crNumber: string; title: string; status: string }>;
  workflows: Array<{ id: string; currentState: string }>;
 }
@@ -86,8 +93,8 @@ interface FormulaListRow {
 export function FormulaDetailPage(): JSX.Element {
  const params = useParams();
  const formulaId = String(params.id ?? "");
+ const navigate = useNavigate();
  const queryClient = useQueryClient();
- const [message, setMessage] = useState("");
  const [isEditing, setIsEditing] = useState(false);
  const [isEditingSpecs, setIsEditingSpecs] = useState(false);
  const [draftOutputItemId, setDraftOutputItemId] = useState("");
@@ -118,7 +125,12 @@ export function FormulaDetailPage(): JSX.Element {
     return prev;
    }
    const next = [...prev];
-   [next[index], next[target]] = [next[target], next[index]];
+   const currentRow = next[index];
+   const targetRow = next[target];
+   if (!currentRow || !targetRow) {
+    return prev;
+   }
+   [next[index], next[target]] = [targetRow, currentRow];
    return renumberLines(next);
   });
  }
@@ -140,6 +152,13 @@ export function FormulaDetailPage(): JSX.Element {
   queryFn: async () => (await api.get<FormulaHistoryResponse>(`/formulas/${formulaId}/history`)).data,
   enabled: Boolean(formulaId)
  });
+
+ const auditLog = useQuery({
+  queryKey: ["formula-audit", formulaId],
+  queryFn: async () =>
+   (await api.get<{ data: Array<{ id: string; action: string; actorName: string; createdAt: string }> }>(`/formulas/${formulaId}/audit`)).data,
+  enabled: Boolean(formulaId) && activeTab === "history"
+ });
  const uomsQuery = useQuery({
   queryKey: ["config-uoms"],
   queryFn: async () => (await api.get<UomResponse>("/config/uoms")).data,
@@ -159,6 +178,11 @@ export function FormulaDetailPage(): JSX.Element {
   queryFn: async () => (await api.get<LabelPreview>(`/labels/formulas/${formulaId}`)).data,
   enabled: Boolean(formulaId && formula.data?.industryType === "FOOD_BEVERAGE")
  });
+
+ const currentUserId = (JSON.parse(localStorage.getItem("plm_user") || "{}") as { id?: string }).id ?? "";
+ const currentUserRole = (JSON.parse(localStorage.getItem("plm_user") || "{}") as { role?: string }).role ?? "";
+ const isAdmin = ["System Admin", "PLM Admin", "Container Admin"].includes(currentUserRole);
+ const isCheckedOutByMe = formula.data?.checkedOutById === currentUserId;
 
  const latestId = useMemo(() => history.data?.history?.[0]?.id, [history.data?.history]);
  const isOldVersion = Boolean(latestId && latestId !== formulaId);
@@ -200,14 +224,14 @@ export function FormulaDetailPage(): JSX.Element {
    });
   },
   onSuccess: async () => {
-   setMessage("Formulation updated.");
+   toast.success("Formula saved.");
    setIsEditing(false);
    await queryClient.invalidateQueries({ queryKey: ["formula-detail-page", formulaId] });
    await queryClient.invalidateQueries({ queryKey: ["formula-links-page", formulaId] });
    await queryClient.invalidateQueries({ queryKey: ["formulas"] });
   },
   onError: (error) => {
-   setMessage(error instanceof Error ? error.message : "Update failed");
+   toast.error((error as Error)?.message ?? "Save failed.");
   }
  });
 
@@ -228,7 +252,7 @@ export function FormulaDetailPage(): JSX.Element {
    link.remove();
    window.URL.revokeObjectURL(url);
   } catch (error) {
-   setMessage(error instanceof Error ? error.message : "Failed to download MSDS.");
+   toast.error(error instanceof Error ? error.message : "Failed to download MSDS.");
   }
  }
 
@@ -252,11 +276,11 @@ export function FormulaDetailPage(): JSX.Element {
   },
   onSuccess: async () => {
    setIsEditingSpecs(false);
-   setMessage("Specifications saved.");
+   toast.success("Specifications saved.");
    await queryClient.invalidateQueries({ queryKey: ["formula-links-page", formulaId] });
   },
   onError: (error) => {
-   setMessage(error instanceof Error ? error.message : "Failed to save specifications.");
+   toast.error(error instanceof Error ? error.message : "Failed to save specifications.");
   }
  });
 
@@ -265,7 +289,7 @@ export function FormulaDetailPage(): JSX.Element {
    return;
   }
   setDraftOutputItemId(formula.data.outputItem?.id ?? "");
-  const rows =
+  const rows: IngredientRow[] =
    formula.data.ingredients?.map((ingredient) => ({
     sourceType: ingredient.item?.id ? "ITEM" : "FORMULA",
     sourceId: ingredient.item?.id ?? ingredient.inputFormula?.id ?? "",
@@ -358,64 +382,80 @@ export function FormulaDetailPage(): JSX.Element {
 
   return (
   <div className="space-y-4 rounded-xl bg-white p-4">
-   <div className="flex items-center justify-between">
-    <div className="flex items-center gap-3">
-     <div className="rounded-full bg-slate-100 p-2">
-      <EntityIcon kind="formula" size={20} />
-     </div>
-     <div>
-     <p className="font-mono text-sm text-slate-500">
-      {formula.data?.formulaCode} v{formula.data?.version}
-     </p>
-     <h2 className="font-heading text-xl">{formula.data?.name}</h2>
-     <p className="text-sm text-slate-500">
-      Type: {formula.data?.recipeType === "FORMULA_RECIPE" ? "Formula" : "Finished Good"} | Status: {formula.data?.status}
-     </p>
-     </div>
-    </div>
-    <div className="flex items-center gap-2">
-     <button
-      type="button"
-      onClick={() => void downloadMsds()}
-      className="rounded border border-slate-300 bg-white px-3 py-1 text-sm"
-     >
-      Download MSDS
-     </button>
-     {formula.data?.status === "DRAFT" ? (
-      isEditing ? (
-       <>
+   <DetailHeaderCard
+   icon={<EntityIcon kind="formula" size={20} />}
+    code={`${formula.data?.formulaCode ?? ""} v${formula.data?.version ?? ""}`}
+    title={formula.data?.name ?? "Formulation"}
+    meta={`Type: ${formula.data?.recipeType === "FORMULA_RECIPE" ? "Formula" : "Finished Good"}`}
+    backTo="/formulas"
+    backLabel="Back to Formulation"
+    actions={
+      <>
         <button
-         onClick={() => updateStructure.mutate()}
-         className="rounded bg-primary px-3 py-1 text-sm text-white"
-         type="button"
+          type="button"
+          onClick={() => navigate(`/formulas/${formulaId}/thread`)}
+          className="rounded border border-primary bg-blue-50 px-3 py-1 text-sm font-medium text-primary hover:bg-blue-100"
         >
-         Save
+          Digital Thread
         </button>
         <button
-         onClick={() => setIsEditing(false)}
-         className="rounded border border-slate-300 bg-white px-3 py-1 text-sm"
-         type="button"
+          type="button"
+          onClick={() => void downloadMsds()}
+          className="rounded border border-slate-300 bg-white px-3 py-1 text-sm"
         >
-         Cancel
+          Download MSDS
         </button>
-       </>
-      ) : (
-       <button
-        onClick={() => setIsEditing(true)}
-        className="rounded border border-slate-300 bg-white px-3 py-1 text-sm"
-        type="button"
-       >
-        Edit Structure
-       </button>
-      )
-     ) : null}
-     <Link to="/formulas" className="rounded border border-slate-300 bg-white px-3 py-1 text-sm">
-      Back to Formulation
-     </Link>
-    </div>
+        {formula.data?.status === "IN_WORK" ? (
+          isEditing ? (
+            <>
+              <button
+                onClick={() => updateStructure.mutate()}
+                className="rounded bg-primary px-3 py-1 text-sm text-white"
+                type="button"
+              >
+                Save
+              </button>
+              <button
+                onClick={() => setIsEditing(false)}
+                className="rounded border border-slate-300 bg-white px-3 py-1 text-sm"
+                type="button"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setIsEditing(true)}
+              className="rounded border border-slate-300 bg-white px-3 py-1 text-sm"
+              type="button"
+            >
+              Edit Structure
+            </button>
+          )
+        ) : null}
+      </>
+   }
+   />
+   {formula.data ? (
+    <CheckoutBar
+     entityType="formulas"
+     entityId={formulaId}
+     info={{
+      checkedOutById: formula.data.checkedOutById,
+      checkedOutBy: formula.data.checkedOutBy,
+      checkedOutAt: formula.data.checkedOutAt,
+      status: formula.data.status
+     }}
+     currentUserId={currentUserId}
+     isAdmin={isAdmin}
+     queryKey={["formula-detail-page", formulaId]}
+    />
+   ) : null}
+   <div className="flex items-center gap-2 text-sm text-slate-500">
+    <span>Status</span>
+    <StatusBadge status={formula.data?.status} />
    </div>
 
-   {message ? <p className="text-sm text-slate-600">{message}</p> : null}
 
    <div className="flex items-center gap-2 border-b border-slate-200 text-sm">
     <button
@@ -660,7 +700,7 @@ export function FormulaDetailPage(): JSX.Element {
     <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm">
      <p className="mb-1 font-medium">Linked BOMs</p>
      {links.data?.boms.map((bom) => (
-      <Link key={bom.id} to={`/bom/${bom.id}`} className="block text-primary hover:underline">
+      <Link key={bom.id} to={`/fg/${bom.id}`} className="block text-primary hover:underline">
        {bom.bomCode} v{bom.version} ({bom.type})
       </Link>
      ))}
@@ -688,7 +728,8 @@ export function FormulaDetailPage(): JSX.Element {
          );
          setIsEditingSpecs(true);
         }}
-        disabled={formula.data?.status !== "DRAFT"}
+        disabled={formula.data?.status !== "IN_WORK"}
+        title={formula.data?.status !== "IN_WORK" ? "Check out the formula to edit specifications" : undefined}
         className="rounded border border-slate-300 bg-white px-3 py-1 text-xs disabled:opacity-60"
        >
         Edit Specs
@@ -1024,29 +1065,60 @@ export function FormulaDetailPage(): JSX.Element {
      </div>
     </div>
    ) : (
-    <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm">
-     <p className="mb-2 font-medium">Formulation Version History</p>
-     {history.data?.history?.length ? (
-      <div className="space-y-2">
-       {history.data.history.map((entry) => (
-        <Link
-         key={entry.id}
-         to={`/formulas/${entry.id}`}
-         className={`block rounded border px-3 py-2 ${
-          entry.id === formulaId ? "border-primary bg-white" : "border-slate-200 bg-white hover:border-primary"
-         }`}
-        >
-         <div className="flex items-center justify-between text-sm">
-          <span className="font-mono">{entry.formulaCode} v{entry.version}</span>
-          <span className="text-slate-500">{entry.revisionLabel}</span>
-         </div>
-         <div className="text-xs text-slate-500">Status: {entry.status}</div>
-        </Link>
-       ))}
-      </div>
-     ) : (
-      <p className="text-slate-500">No previous versions.</p>
-     )}
+    <div className="space-y-4">
+     <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm">
+      <p className="mb-2 font-medium">Formulation Version History</p>
+      {history.data?.history?.length ? (
+       <div className="space-y-2">
+        {history.data.history.map((entry) => (
+         <Link
+          key={entry.id}
+          to={`/formulas/${entry.id}`}
+          className={`block rounded border px-3 py-2 ${
+           entry.id === formulaId ? "border-primary bg-white" : "border-slate-200 bg-white hover:border-primary"
+          }`}
+         >
+          <div className="flex items-center justify-between text-sm">
+           <span className="font-mono">{entry.formulaCode} v{entry.version}</span>
+           <span className="text-slate-500">{entry.revisionLabel}</span>
+          </div>
+          <div className="text-xs text-slate-500">Status: {entry.status}</div>
+         </Link>
+        ))}
+       </div>
+      ) : (
+       <p className="text-slate-500">No previous versions.</p>
+      )}
+     </div>
+     <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm">
+      <p className="mb-2 font-medium">Audit Trail</p>
+      {auditLog.isLoading ? (
+       <p className="text-slate-400">Loading audit log...</p>
+      ) : (auditLog.data?.data?.length ?? 0) === 0 ? (
+       <p className="text-slate-500">No audit events recorded.</p>
+      ) : (
+       <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+         <thead>
+          <tr className="border-b border-slate-200 text-slate-400">
+           <th className="pb-1 pr-4 text-left font-medium">Action</th>
+           <th className="pb-1 pr-4 text-left font-medium">By</th>
+           <th className="pb-1 text-left font-medium">When</th>
+          </tr>
+         </thead>
+         <tbody>
+          {auditLog.data!.data.map((entry) => (
+           <tr key={entry.id} className="border-b border-slate-100">
+            <td className="py-1 pr-4 font-mono uppercase text-slate-600">{entry.action}</td>
+            <td className="py-1 pr-4 text-slate-600">{entry.actorName}</td>
+            <td className="py-1 text-slate-400">{new Date(entry.createdAt).toLocaleString()}</td>
+           </tr>
+          ))}
+         </tbody>
+        </table>
+       </div>
+      )}
+     </div>
     </div>
    )}
   </div>

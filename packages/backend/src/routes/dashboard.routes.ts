@@ -19,7 +19,7 @@ router.get("/", async (req, res, next) => {
     const industryFilter = container?.industry ?? null;
     const accessibleItemContainers = isAdmin ? [] : await getAccessibleContainerIds(userId, "ITEM", "READ");
     const accessibleFormulaContainers = isAdmin ? [] : await getAccessibleContainerIds(userId, "FORMULA", "READ");
-    const accessibleBomContainers = isAdmin ? [] : await getAccessibleContainerIds(userId, "BOM", "READ");
+    const accessibleFgContainers = isAdmin ? [] : await getAccessibleContainerIds(userId, "BOM", "READ");
     const accessibleChangeContainers = isAdmin ? [] : await getAccessibleContainerIds(userId, "CHANGE", "READ");
 
     const itemContainerFilter = containerId
@@ -32,11 +32,11 @@ router.get("/", async (req, res, next) => {
       : isAdmin
         ? {}
         : { OR: [{ containerId: null }, { containerId: { in: accessibleFormulaContainers } }] };
-    const bomContainerFilter = containerId
+    const fgContainerFilter = containerId
       ? { containerId }
       : isAdmin
         ? {}
-        : { OR: [{ containerId: null }, { containerId: { in: accessibleBomContainers } }] };
+        : { OR: [{ containerId: null }, { containerId: { in: accessibleFgContainers } }] };
     const changeContainerFilter = containerId
       ? { containerId }
       : isAdmin
@@ -47,12 +47,12 @@ router.get("/", async (req, res, next) => {
     recentStart.setDate(recentStart.getDate() - 6);
     recentStart.setHours(0, 0, 0, 0);
 
-    const [activeFormulas, pendingChanges, itemsUnderReview, upcomingExpiries, recentItems, recentFormulas, recentBoms, changeByStatus, recentChanges, recentItemEvents, recentFormulaEvents, recentBomEvents] = await Promise.all([
+    const [activeFormulas, pendingChanges, itemsUnderReview, upcomingExpiries, recentItems, recentFormulas, recentFgStructures, changeByStatus, recentChanges, recentItemEvents, recentFormulaEvents, recentFgEvents] = await Promise.all([
       prisma.formula.count({
-        where: { ...(industryFilter ? { industryType: industryFilter } : {}), status: { in: ["APPROVED", "RELEASED"] }, ...formulaContainerFilter }
+        where: { ...(industryFilter ? { industryType: industryFilter } : {}), status: "RELEASED", ...formulaContainerFilter }
       }),
       prisma.changeRequest.count({ where: { status: { in: ["NEW", "SUBMITTED", "UNDER_REVIEW"] }, ...changeContainerFilter } }),
-      prisma.item.count({ where: { ...(industryFilter ? { industryType: industryFilter } : {}), status: "UNDER_CHANGE", ...itemContainerFilter } }),
+      prisma.item.count({ where: { ...(industryFilter ? { industryType: industryFilter } : {}), status: "UNDER_REVIEW", ...itemContainerFilter } }),
       prisma.formula.count({
         where: {
           ...(industryFilter ? { industryType: industryFilter } : {}),
@@ -72,14 +72,20 @@ router.get("/", async (req, res, next) => {
         orderBy: { createdAt: "desc" },
         take: 4
       }),
-      prisma.bOM.findMany({
+      prisma.fGStructure.findMany({
         where: {
           ...(industryFilter
-            ? { OR: [{ formula: { industryType: industryFilter } }, { parentItem: { industryType: industryFilter } }] }
+            ? { fgItem: { industryType: industryFilter } }
             : {}),
-          ...bomContainerFilter
+          ...fgContainerFilter
         },
-        select: { id: true, bomCode: true, version: true, type: true, createdAt: true },
+        select: {
+          id: true,
+          version: true,
+          status: true,
+          createdAt: true,
+          fgItem: { select: { itemCode: true, name: true } }
+        },
         orderBy: { createdAt: "desc" },
         take: 4
       }),
@@ -106,13 +112,13 @@ router.get("/", async (req, res, next) => {
         where: { ...(industryFilter ? { industryType: industryFilter } : {}), createdAt: { gte: recentStart }, ...formulaContainerFilter },
         select: { createdAt: true }
       }),
-      prisma.bOM.findMany({
+      prisma.fGStructure.findMany({
         where: {
           ...(industryFilter
-            ? { OR: [{ formula: { industryType: industryFilter } }, { parentItem: { industryType: industryFilter } }] }
+            ? { fgItem: { industryType: industryFilter } }
             : {}),
           createdAt: { gte: recentStart },
-          ...bomContainerFilter
+          ...fgContainerFilter
         },
         select: { createdAt: true }
       })
@@ -160,12 +166,12 @@ router.get("/", async (req, res, next) => {
       recent: {
         items: recentItems,
         formulas: recentFormulas,
-        boms: recentBoms
+        fgStructures: recentFgStructures
       },
       recentActivity: {
         items: buildDaily(recentItemEvents),
         formulas: buildDaily(recentFormulaEvents),
-        boms: buildDaily(recentBomEvents)
+        fgStructures: buildDaily(recentFgEvents)
       },
       changeDashboard: {
         byStatus: changeByStatus.map((entry) => ({ status: entry.status, count: entry._count._all })),

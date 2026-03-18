@@ -43,9 +43,8 @@ interface FloatingSelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
 }
 
 export function FloatingSelect({ label, className = "", value, children, ...props }: FloatingSelectProps): JSX.Element {
-  const empty = value === "" || value === undefined || value === null;
   return (
-    <div className="relative group" data-empty={empty ? "true" : "false"}>
+    <div className="relative">
       <select
         {...props}
         value={value}
@@ -53,7 +52,7 @@ export function FloatingSelect({ label, className = "", value, children, ...prop
       >
         {children}
       </select>
-      <label className="pointer-events-none absolute left-3 top-2 bg-white px-1 text-xs text-slate-500 transition-all group-data-[empty=true]:top-3.5 group-data-[empty=true]:text-sm group-data-[empty=true]:text-slate-400 peer-focus:top-2 peer-focus:text-xs peer-focus:text-slate-500">
+      <label className="pointer-events-none absolute left-3 top-2 bg-white px-1 text-xs text-slate-500 transition-all peer-focus:text-slate-500">
         {label}
       </label>
     </div>

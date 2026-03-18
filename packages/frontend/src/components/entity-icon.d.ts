@@ -1,4 +1,4 @@
-type EntityKind = "item" | "formula" | "bom" | "document" | "change" | "release";
+type EntityKind = "item" | "formula" | "bom" | "document" | "change" | "release" | "artwork";
 type ItemVariant = "RAW_MATERIAL" | "INTERMEDIATE" | "FINISHED_GOOD" | "PACKAGING" | string | undefined;
 interface Props {
     kind: EntityKind;

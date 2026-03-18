@@ -18,12 +18,21 @@ function toAuthTokenPayload(payload: string | JwtPayload): AuthTokenPayload | nu
 
 export function authenticate(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
+  let token: string | undefined;
+
+  if (authHeader?.startsWith("Bearer ")) {
+    token = authHeader.split(" ")[1];
   }
 
-  const token = authHeader.split(" ")[1];
+  // Native EventSource does not allow custom Authorization headers.
+  // Allow JWT through query param only for SSE requests.
+  if (!token && req.headers.accept?.includes("text/event-stream")) {
+    const tokenParam = req.query.token;
+    if (typeof tokenParam === "string" && tokenParam.length > 0) {
+      token = tokenParam;
+    }
+  }
+
   if (!token) {
     res.status(401).json({ message: "Unauthorized" });
     return;

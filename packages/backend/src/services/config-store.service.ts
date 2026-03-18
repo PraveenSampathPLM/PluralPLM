@@ -2,10 +2,10 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { prisma } from "./prisma.js";
 
-export type ConfigEntity = "ITEM" | "ITEM_FINISHED_GOOD" | "ITEM_PACKAGING" | "FORMULA" | "BOM" | "CHANGE_REQUEST" | "RELEASE_REQUEST" | "DOCUMENT";
+export type ConfigEntity = "ITEM" | "ITEM_FINISHED_GOOD" | "ITEM_PACKAGING" | "FORMULA" | "BOM" | "CHANGE_REQUEST" | "RELEASE_REQUEST" | "DOCUMENT" | "ARTWORK";
 export type AttributeEntity = "ITEM";
 export type RevisionEntity = "ITEM" | "FORMULA" | "BOM";
-export type ListEntity = "ITEM" | "FORMULA" | "BOM" | "CHANGE_REQUEST" | "SPECIFICATION";
+export type ListEntity = "ITEM" | "FORMULA" | "BOM" | "CHANGE_REQUEST" | "RELEASE_REQUEST" | "SPECIFICATION";
 
 export interface NumberSequence {
   prefix: string;
@@ -86,18 +86,19 @@ const defaultConfig: AppConfigData = {
     BOM: { prefix: "CH-BOM-", padding: 4, next: 1 },
     CHANGE_REQUEST: { prefix: "CH-CR-", padding: 4, next: 1 },
     RELEASE_REQUEST: { prefix: "CH-RR-", padding: 4, next: 1 },
-    DOCUMENT: { prefix: "CH-DOC-", padding: 4, next: 1 }
+    DOCUMENT: { prefix: "CH-DOC-", padding: 4, next: 1 },
+    ARTWORK: { prefix: "CH-ART-", padding: 4, next: 1 }
   },
   attributeDefinitions: {
     ITEM: [
-      { key: "casNumber", label: "CAS Number", type: "text" },
-      { key: "grade", label: "Grade/Specification", type: "text" },
-      { key: "supplier", label: "Preferred Supplier", type: "text" },
-      { key: "reach", label: "REACH Registered", type: "boolean" },
-      { key: "vocContent", label: "VOC Content (%)", type: "number" },
-      { key: "viscosity", label: "Viscosity (cP)", type: "number" },
-      { key: "density", label: "Density (g/cc)", type: "number" },
-      { key: "color", label: "Color/Appearance", type: "text" }
+      { key: "casNumber", label: "CAS Number", type: "text", required: false },
+      { key: "grade", label: "Grade/Specification", type: "text", required: false },
+      { key: "supplier", label: "Preferred Supplier", type: "text", required: false },
+      { key: "reach", label: "REACH Registered", type: "boolean", required: false },
+      { key: "vocContent", label: "VOC Content (%)", type: "number", required: false },
+      { key: "viscosity", label: "Viscosity (cP)", type: "number", required: false },
+      { key: "density", label: "Density (g/cc)", type: "number", required: false },
+      { key: "color", label: "Color/Appearance", type: "text", required: false }
     ]
   },
   revisionSchemes: {
@@ -361,7 +362,7 @@ async function ensureDefaultNumberSequences(): Promise<void> {
 async function readNumberSequences(): Promise<Record<ConfigEntity, NumberSequence>> {
   await ensureDefaultNumberSequences();
   const entries = await prisma.numberSequence.findMany({
-    where: { entity: { in: ["ITEM", "ITEM_FINISHED_GOOD", "ITEM_PACKAGING", "FORMULA", "BOM", "CHANGE_REQUEST", "RELEASE_REQUEST", "DOCUMENT"] } }
+    where: { entity: { in: ["ITEM", "ITEM_FINISHED_GOOD", "ITEM_PACKAGING", "FORMULA", "BOM", "CHANGE_REQUEST", "RELEASE_REQUEST", "DOCUMENT", "ARTWORK"] } }
   });
 
   const mapped = {} as Record<ConfigEntity, NumberSequence>;
@@ -413,18 +414,76 @@ export async function writeAppConfig(config: AppConfigData): Promise<void> {
   await fs.writeFile(configPath, JSON.stringify(persisted, null, 2), "utf-8");
 }
 
-export async function peekNextSequenceValue(entity: ConfigEntity): Promise<string> {
+// ─── Container-scoped sequence helpers ────────────────────────────────────────
+
+function getIndustryPrefixBase(industry: string): string {
+  const map: Record<string, string> = {
+    FOOD_BEVERAGE: "FNB",
+    POLYMER: "PLY",
+    CHEMICAL: "CH",
+    CPG: "CPG",
+    TYRE: "TYR",
+    PAINT: "PNT"
+  };
+  return map[industry] ?? "PLM";
+}
+
+function getEntitySuffix(entity: ConfigEntity): string {
+  const map: Partial<Record<ConfigEntity, string>> = {
+    ITEM: "RM-",
+    ITEM_FINISHED_GOOD: "FG-",
+    ITEM_PACKAGING: "PKG-",
+    FORMULA: "FML-",
+    BOM: "FG-",
+    CHANGE_REQUEST: "CR-",
+    RELEASE_REQUEST: "RR-",
+    DOCUMENT: "DOC-",
+    ARTWORK: "ART-"
+  };
+  return map[entity] ?? "ITM-";
+}
+
+async function getOrCreateContainerSequence(entity: ConfigEntity, containerId: string): Promise<{ key: string; padding: number }> {
+  const containerKey = `${entity}_${containerId}`;
+  const existing = await prisma.numberSequence.findUnique({ where: { entity: containerKey } });
+  if (existing) return { key: containerKey, padding: existing.padding };
+
+  // Auto-init from the container's industry
+  const container = await prisma.productContainer.findUnique({ where: { id: containerId }, select: { industry: true } });
+  const base = container ? getIndustryPrefixBase(container.industry) : "PLM";
+  const suffix = getEntitySuffix(entity);
+  const prefix = `${base}-${suffix}`;
+  await prisma.numberSequence.upsert({
+    where: { entity: containerKey },
+    create: { entity: containerKey, prefix, padding: 4, next: 1 },
+    update: {}
+  });
+  return { key: containerKey, padding: 4 };
+}
+
+// ─── Sequence reads / writes ───────────────────────────────────────────────────
+
+export async function peekNextSequenceValue(entity: ConfigEntity, containerId?: string | null): Promise<string> {
+  if (containerId) {
+    const { key } = await getOrCreateContainerSequence(entity, containerId);
+    const row = await prisma.numberSequence.findUnique({ where: { entity: key } });
+    if (row) return `${row.prefix}${String(row.next).padStart(row.padding, "0")}`;
+  }
   const sequences = await readNumberSequences();
   const sequence = sequences[entity];
   return `${sequence.prefix}${String(sequence.next).padStart(sequence.padding, "0")}`;
 }
 
-export async function allocateNextSequenceValue(entity: ConfigEntity): Promise<string> {
+export async function allocateNextSequenceValue(entity: ConfigEntity, containerId?: string | null): Promise<string> {
   await ensureDefaultNumberSequences();
+  const sequenceKey = containerId
+    ? (await getOrCreateContainerSequence(entity, containerId)).key
+    : entity as string;
+
   const rows = await prisma.$queryRaw<Array<{ prefix: string; padding: number; allocated: number }>>`
     UPDATE "NumberSequence"
     SET "next" = "next" + 1
-    WHERE "entity" = ${entity}
+    WHERE "entity" = ${sequenceKey}
     RETURNING "prefix", "padding", "next" - 1 AS "allocated"
   `;
 
@@ -435,7 +494,7 @@ export async function allocateNextSequenceValue(entity: ConfigEntity): Promise<s
   return `${row.prefix}${String(row.allocated).padStart(row.padding, "0")}`;
 }
 
-export async function updateSequence(entity: ConfigEntity, input: NumberSequence): Promise<void> {
+export async function updateSequence(entity: string, input: NumberSequence): Promise<void> {
   await prisma.numberSequence.upsert({
     where: { entity },
     update: { prefix: input.prefix, padding: input.padding, next: input.next },

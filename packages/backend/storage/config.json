@@ -12,11 +12,6 @@
         "type": "text"
       },
       {
-        "key": "reach",
-        "label": "REACH Registered",
-        "type": "boolean"
-      },
-      {
         "key": "vocContent",
         "label": "VOC Content (%)",
         "type": "number"

@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+
 const helpScreens = [
   {
     id: "dashboard",
@@ -6,7 +8,7 @@ const helpScreens = [
     summary: "KPIs, recent objects, change request trends, and quick navigation.",
     steps: [
       "Select a container from the header to scope KPIs and lists.",
-      "Use the Recent Items/Formulas/BOMs tables to open records.",
+      "Use the recent object tables to open records.",
       "Review change request charts to spot bottlenecks."
     ],
     howTo: [
@@ -88,38 +90,37 @@ const helpScreens = [
     ]
   },
   {
-    id: "bom-list",
-    image: "help-bom-list.png",
-    title: "BOM List",
-    summary: "Finished good and formula BOMs.",
+    id: "fg-structures",
+    image: "help-fg-list.png",
+    title: "FG Structures",
+    summary: "Create and manage Finished Good structures in one place.",
     steps: [
-      "FG BOM requires FML + PKG inputs.",
-      "Formula BOM consumes RM/FML and outputs a formula.",
-      "State badges show Draft/Released."
+      "FG structure parent is the Finished Good item.",
+      "Children should include formula output and packaging lines.",
+      "Use actions for checkout/checkin/revise/copy/delete."
     ],
     howTo: [
-      "Click Create BOM.",
-      "Choose FG BOM or Formula BOM type.",
-      "Select the parent item (FG or FML).",
-      "Add child lines and save."
+      "Open FG Structures from the left navigation.",
+      "Create a structure for the selected FG item.",
+      "Add formula and packaging child lines with quantity and UOM.",
+      "Save draft, validate, then check in when ready."
     ]
   },
   {
-    id: "bom-detail",
-    image: "help-bom-detail.png",
-    title: "BOM Detail",
-    summary: "Edit line items and validate structure.",
+    id: "fg-structure-detail",
+    image: "help-fg-detail.png",
+    title: "FG Structure Detail",
+    summary: "Edit structure lines, validate composition, and track version history.",
     steps: [
-      "Draft BOMs allow inline edits and reordering.",
-      "Validation warns about missing formula line on FG BOMs.",
-      "Line numbers auto-increment on save."
+      "Draft structures allow inline edits.",
+      "Use line ordering to control packaging execution sequence.",
+      "History tab shows prior structure revisions."
     ],
     howTo: [
-      "Open a BOM from the list.",
-      "Checkout to edit line items.",
-      "Add a Formula line if FG BOM.",
-      "Add Packaging lines as needed.",
-      "Reorder lines and save."
+      "Open an FG structure from the FG list.",
+      "Checkout to edit lines.",
+      "Update formula/packaging lines and save.",
+      "Review warnings, then check in."
     ]
   },
   {
@@ -173,6 +174,42 @@ const helpScreens = [
     ]
   },
   {
+    id: "artworks",
+    image: "help-artworks.png",
+    title: "Artwork Management",
+    summary: "Create and track artwork records linked to FG, formula, and release objects.",
+    steps: [
+      "Use Create Artwork to capture legal copy, warnings, and market context.",
+      "Link FG and formula so release/change impact stays connected.",
+      "Use row Actions for checkout/checkin/revise/copy/delete."
+    ],
+    howTo: [
+      "Open Artworks from the left navigation.",
+      "Click Create Artwork and fill title, market, claims, and links.",
+      "Save to auto-generate the artwork number.",
+      "Open a row to manage components, proofs, and compliance."
+    ]
+  },
+  {
+    id: "artwork-detail",
+    image: "help-artwork-detail.png",
+    title: "Artwork Detail and Proofing",
+    summary: "Manage artwork components, upload proofs, annotate, preview files, and delete obsolete proofs.",
+    steps: [
+      "Proofing tab supports PDF/image inline preview in a large panel.",
+      "Design-native formats like .ai show a fallback message and download option.",
+      "Delete Proof removes the file record and storage file.",
+      "If a file is missing on storage, download/preview returns a safe 404 message."
+    ],
+    howTo: [
+      "Open an artwork record and go to Proofing.",
+      "Upload SOURCE/PROOF/FINAL files and assign to a component if needed.",
+      "Pick a file from the list to load preview in the right panel.",
+      "Add annotations from the Annotate File dropdown.",
+      "Use Delete Proof for obsolete files."
+    ]
+  },
+  {
     id: "changes",
     image: "help-changes.png",
     title: "Change Requests",
@@ -184,7 +221,7 @@ const helpScreens = [
     ],
     howTo: [
       "Create a Change Request from the list or from an item action.",
-      "Add affected items, formulas, or BOMs.",
+      "Add affected items and formulas.",
       "Review the auto-collected impact list.",
       "Submit to start the workflow."
     ]
@@ -195,7 +232,7 @@ const helpScreens = [
     title: "Change Request Detail",
     summary: "Track impact, linked objects, and workflow progress for a change.",
     steps: [
-      "Review linked items, formulas, and BOMs collected automatically.",
+      "Review linked items and formulas collected automatically.",
       "Use the workflow tab to see current task ownership.",
       "Submit or complete tasks to advance the change."
     ],
@@ -210,15 +247,15 @@ const helpScreens = [
     id: "releases",
     image: "help-releases.png",
     title: "Release Requests",
-    summary: "Initial release workflows for new items, formulas, and BOMs.",
+    summary: "Initial release workflows for new items and formulas.",
     steps: [
-      "Add BOM/Formula to auto-collect linked objects.",
+      "Add formula/FG structures to auto-collect linked objects.",
       "Kick off workflow after submission.",
       "Track tasks in My Tasks."
     ],
     howTo: [
       "Create a Release Request.",
-      "Add the BOM or Formula for release.",
+      "Add the formula or FG structure for release.",
       "Review the collected objects list.",
       "Submit to start approvals."
     ]
@@ -306,13 +343,15 @@ function HelpScreenCard({
   summary,
   steps,
   howTo,
-  image
+  image,
+  onZoom
 }: {
   title: string;
   summary: string;
   steps: string[];
   howTo: string[];
   image?: string;
+  onZoom?: (payload: { title: string; imageUrl: string }) => void;
 }): JSX.Element {
   const imageUrl = image ? helpImageMap[image] : undefined;
   return (
@@ -341,9 +380,13 @@ function HelpScreenCard({
           </div>
         </div>
         {imageUrl ? (
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-            <img src={imageUrl} alt={`${title} screenshot`} className="h-full w-full object-cover" />
-          </div>
+          <button
+            type="button"
+            onClick={() => onZoom?.({ title, imageUrl })}
+            className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-left"
+          >
+            <img src={imageUrl} alt={`${title} screenshot`} className="h-full w-full object-cover transition duration-200 hover:scale-[1.01]" />
+          </button>
         ) : (
           <div className="flex h-full min-h-[180px] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-center text-xs text-slate-500">
             <div className="space-y-2 px-4">
@@ -359,6 +402,21 @@ function HelpScreenCard({
 }
 
 export function HelpCenterPage(): JSX.Element {
+  const [zoomedImage, setZoomedImage] = useState<{ title: string; imageUrl: string } | null>(null);
+
+  useEffect(() => {
+    if (!zoomedImage) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setZoomedImage(null);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [zoomedImage]);
+
   return (
     <div className="space-y-6">
       <header className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -386,11 +444,13 @@ export function HelpCenterPage(): JSX.Element {
               <a className="block hover:text-primary" href="#screen-material-detail">Material Detail</a>
               <a className="block hover:text-primary" href="#screen-formulation-list">Formulation List</a>
               <a className="block hover:text-primary" href="#screen-formulation-detail">Formulation Detail</a>
-              <a className="block hover:text-primary" href="#screen-bom-list">BOM List</a>
-              <a className="block hover:text-primary" href="#screen-bom-detail">BOM Detail</a>
+              <a className="block hover:text-primary" href="#screen-fg-structures">FG Structures</a>
+              <a className="block hover:text-primary" href="#screen-fg-structure-detail">FG Structure Detail</a>
               <a className="block hover:text-primary" href="#screen-specifications">Specifications</a>
               <a className="block hover:text-primary" href="#screen-documents">Documents</a>
               <a className="block hover:text-primary" href="#screen-document-detail">Document Detail</a>
+              <a className="block hover:text-primary" href="#screen-artworks">Artwork Management</a>
+              <a className="block hover:text-primary" href="#screen-artwork-detail">Artwork Detail</a>
               <a className="block hover:text-primary" href="#screen-labeling">Labeling</a>
             </div>
             <div className="space-y-2">
@@ -450,6 +510,7 @@ export function HelpCenterPage(): JSX.Element {
                       steps={screen.steps}
                       howTo={screen.howTo}
                       image={screen.image}
+                      onZoom={setZoomedImage}
                     />
                   </div>
                 );
@@ -458,6 +519,23 @@ export function HelpCenterPage(): JSX.Element {
           </section>
         </div>
       </section>
+
+      {zoomedImage ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <button type="button" className="absolute inset-0 h-full w-full" aria-label="Close screenshot zoom" onClick={() => setZoomedImage(null)} />
+          <div className="relative z-10 max-h-[95vh] w-full max-w-7xl overflow-hidden rounded-xl border border-slate-300 bg-slate-900 p-2 shadow-2xl">
+            <div className="mb-2 flex items-center justify-between px-2">
+              <p className="text-sm font-medium text-white">{zoomedImage.title}</p>
+              <button type="button" onClick={() => setZoomedImage(null)} className="rounded border border-slate-400 px-2 py-1 text-xs text-white">
+                Close
+              </button>
+            </div>
+            <div className="max-h-[86vh] overflow-auto rounded bg-black">
+              <img src={zoomedImage.imageUrl} alt={`${zoomedImage.title} zoomed screenshot`} className="mx-auto h-auto max-h-[86vh] w-auto max-w-full" />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

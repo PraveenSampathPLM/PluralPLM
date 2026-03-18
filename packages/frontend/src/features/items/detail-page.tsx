@@ -1,4 +1,4 @@
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -7,6 +7,10 @@ import { useContainerStore } from "@/store/container.store";
 import { FloatingInput, FloatingSelect } from "@/components/floating-field";
 import { STANDARD_UOMS } from "@/lib/uom";
 import { EntityIcon } from "@/components/entity-icon";
+import { DetailHeaderCard } from "@/components/detail-header-card";
+import { StatusBadge } from "@/components/status-badge";
+import { CheckoutBar } from "@/components/checkout-bar";
+import { toast } from "sonner";
 
 interface ItemDetail {
   id: string;
@@ -26,6 +30,9 @@ interface ItemDetail {
   revisionLabel?: string;
   revisionMajor?: number;
   revisionIteration?: number;
+  checkedOutById?: string | null;
+  checkedOutBy?: { id: string; name: string } | null;
+  checkedOutAt?: string | null;
 }
 
 interface ItemLinksResponse {
@@ -42,7 +49,7 @@ interface ItemLinksResponse {
     uom: string;
     bom: { id: string; bomCode: string; version: number; type: string };
   }>;
-  specifications: Array<{ id: string; specType: string; attribute: string; value?: string | null; minValue?: number | null; maxValue?: number | null; uom?: string | null }>;
+  specifications: Array<{ id: string; specType: string; attribute: string; value?: string | null; minValue?: number | null; maxValue?: number | null; uom?: string | null; testMethod?: string | null }>;
   relatedChanges: Array<{ id: string; crNumber: string; title: string; status: string }>;
   workflows: Array<{ id: string; currentState: string }>;
 }
@@ -94,6 +101,30 @@ interface UomResponse {
   data: Array<{ value: string; label: string; category: string }>;
 }
 
+interface FGStructureSummary {
+  id: string;
+  version: number;
+  revisionLabel: string;
+  status: string;
+  effectiveDate: string | null;
+  formula: { id: string; formulaCode: string; version: number; name: string } | null;
+  packagingLines: Array<{
+    id?: string;
+    lineNumber?: number | null;
+    itemId: string;
+    quantity: number;
+    uom: string;
+    item: { id: string; itemCode: string; name: string } | null;
+  }>;
+}
+
+interface FGStructureListResponse {
+  data: FGStructureSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 interface SpecTemplate {
   specType: string;
   label: string;
@@ -103,8 +134,8 @@ interface SpecTemplate {
 export function ItemDetailPage(): JSX.Element {
   const params = useParams();
   const itemId = String(params.id ?? "");
-  const [activeTab, setActiveTab] = useState<"details" | "specs" | "workflow" | "history">("details");
-  const [message, setMessage] = useState("");
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<"details" | "structure" | "specs" | "workflow" | "history">("details");
   const { selectedContainerId } = useContainerStore();
   const queryClient = useQueryClient();
   const [docSearch, setDocSearch] = useState("");
@@ -137,6 +168,13 @@ export function ItemDetailPage(): JSX.Element {
     boilingPoint: "",
     customAttributes: {} as Record<string, string>
   });
+  const [fgDraft, setFgDraft] = useState({
+    formulaId: "",
+    effectiveDate: ""
+  });
+  const [fgLines, setFgLines] = useState<Array<{ lineNumber: string; itemId: string; quantity: string; uom: string }>>([
+    { lineNumber: "10", itemId: "", quantity: "", uom: "ea" }
+  ]);
 
   const item = useQuery({
     queryKey: ["item-detail", itemId],
@@ -154,6 +192,13 @@ export function ItemDetailPage(): JSX.Element {
     queryKey: ["item-history", itemId],
     queryFn: async () => (await api.get<ItemHistoryResponse>(`/items/${itemId}/history`)).data,
     enabled: Boolean(itemId)
+  });
+
+  const auditLog = useQuery({
+    queryKey: ["item-audit", itemId],
+    queryFn: async () =>
+      (await api.get<{ data: Array<{ id: string; action: string; actorName: string; createdAt: string }> }>(`/items/${itemId}/audit`)).data,
+    enabled: Boolean(itemId) && activeTab === "history"
   });
 
   const config = useQuery({
@@ -183,6 +228,39 @@ export function ItemDetailPage(): JSX.Element {
     enabled: Boolean(itemId)
   });
 
+  const fgStructures = useQuery({
+    queryKey: ["item-fg-structures", itemId],
+    queryFn: async () =>
+      (
+        await api.get<FGStructureListResponse>("/fg", {
+          params: { fgItemId: itemId, page: 1, pageSize: 20 }
+        })
+      ).data,
+    enabled: Boolean(itemId) && item.data?.itemType === "FINISHED_GOOD"
+  });
+
+  const formulaOptions = useQuery({
+    queryKey: ["item-fg-formula-options", selectedContainerId],
+    queryFn: async () =>
+      (
+        await api.get<{ data: Array<{ id: string; formulaCode: string; version: number; name: string }> }>("/formulas", {
+          params: { pageSize: 200, ...(selectedContainerId ? { containerId: selectedContainerId } : {}) }
+        })
+      ).data,
+    enabled: item.data?.itemType === "FINISHED_GOOD"
+  });
+
+  const packagingOptions = useQuery({
+    queryKey: ["item-fg-packaging-options", selectedContainerId],
+    queryFn: async () =>
+      (
+        await api.get<{ data: Array<{ id: string; itemCode: string; name: string }> }>("/items", {
+          params: { itemType: "PACKAGING", pageSize: 200, ...(selectedContainerId ? { containerId: selectedContainerId } : {}) }
+        })
+      ).data,
+    enabled: item.data?.itemType === "FINISHED_GOOD"
+  });
+
   const documentSearch = useQuery({
     queryKey: ["document-search", docSearch, selectedContainerId],
     queryFn: async () =>
@@ -207,11 +285,95 @@ export function ItemDetailPage(): JSX.Element {
       });
     },
     onSuccess: async () => {
-      setMessage("Document linked to item.");
+      toast.success("Document linked to item.");
       setDocSearch("");
       await queryClient.invalidateQueries({ queryKey: ["item-documents", itemId] });
     },
-    onError: (error) => setMessage(error instanceof Error ? error.message : "Failed to link document.")
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to link document.")
+  });
+
+  const unlinkDocument = useMutation({
+    mutationFn: async (documentId: string) => {
+      await api.delete(`/documents/${documentId}/links/entity/ITEM/${itemId}`);
+    },
+    onSuccess: async () => {
+      toast.success("Document unlinked.");
+      await queryClient.invalidateQueries({ queryKey: ["item-documents", itemId] });
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to unlink document.")
+  });
+
+  const createFgStructure = useMutation({
+    mutationFn: async () => {
+      if (!fgDraft.formulaId) {
+        throw new Error("Select a formula for FG structure.");
+      }
+      const normalized = fgLines.map((line, index) => ({
+        index,
+        lineNumber: line.lineNumber.trim(),
+        itemId: line.itemId.trim(),
+        quantity: line.quantity.trim(),
+        uom: line.uom.trim() || "ea"
+      }));
+
+      const hasAnyInput = normalized.some((line) => line.itemId || line.quantity || line.lineNumber);
+      const incomplete = normalized.find((line) => (line.itemId && !line.quantity) || (!line.itemId && line.quantity));
+      if (incomplete) {
+        throw new Error(`Line ${incomplete.index + 1}: item and quantity are both required.`);
+      }
+      if (!hasAnyInput) {
+        throw new Error("Add at least one packaging line.");
+      }
+
+      const complete = normalized.filter((line) => line.itemId && line.quantity);
+      const duplicateItem = complete.find((line, idx) => complete.findIndex((entry) => entry.itemId === line.itemId) !== idx);
+      if (duplicateItem) {
+        throw new Error("Duplicate packaging item detected. Combine quantity or keep one line per packaging item.");
+      }
+
+      const packagingLines = complete.map((line, index) => {
+        const quantity = Number(line.quantity);
+        if (Number.isNaN(quantity) || quantity <= 0) {
+          throw new Error(`Line ${line.index + 1}: quantity must be a positive number.`);
+        }
+        const parsedLineNumber = line.lineNumber ? Number(line.lineNumber) : (index + 1) * 10;
+        if (Number.isNaN(parsedLineNumber) || parsedLineNumber <= 0) {
+          throw new Error(`Line ${line.index + 1}: line number must be a positive number.`);
+        }
+        return {
+          lineNumber: parsedLineNumber,
+          itemId: line.itemId,
+          quantity,
+          uom: line.uom
+        };
+      });
+
+      await api.post("/fg", {
+        fgItemId: itemId,
+        formulaId: fgDraft.formulaId,
+        ...(selectedContainerId ? { containerId: selectedContainerId } : {}),
+        ...(fgDraft.effectiveDate ? { effectiveDate: fgDraft.effectiveDate } : {}),
+        packagingLines
+      });
+    },
+    onSuccess: async () => {
+      toast.success("FG structure created.");
+      setFgDraft({ formulaId: "", effectiveDate: "" });
+      setFgLines([{ lineNumber: "10", itemId: "", quantity: "", uom: "ea" }]);
+      await queryClient.invalidateQueries({ queryKey: ["item-fg-structures", itemId] });
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to create FG structure.")
+  });
+
+  const reviseFgStructure = useMutation({
+    mutationFn: async (fgStructureId: string) => {
+      await api.post(`/fg/${fgStructureId}/revise`);
+    },
+    onSuccess: async () => {
+      toast.success("New draft structure revision created.");
+      await queryClient.invalidateQueries({ queryKey: ["item-fg-structures", itemId] });
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to revise structure.")
   });
 
   const updateItem = useMutation({
@@ -234,10 +396,10 @@ export function ItemDetailPage(): JSX.Element {
     },
     onSuccess: async () => {
       setIsEditingItem(false);
-      setMessage("Item updated.");
+      toast.success("Item saved.");
       await queryClient.invalidateQueries({ queryKey: ["item-detail", itemId] });
     },
-    onError: (error) => setMessage(error instanceof Error ? error.message : "Failed to update item.")
+    onError: (error) => toast.error((error as Error)?.message ?? "Save failed.")
   });
 
   const saveSpecs = useMutation({
@@ -260,14 +422,22 @@ export function ItemDetailPage(): JSX.Element {
     },
     onSuccess: async () => {
       setIsEditingSpecs(false);
-      setMessage("Specifications saved.");
+      toast.success("Specifications saved.");
       await queryClient.invalidateQueries({ queryKey: ["item-links-detail", itemId] });
     },
-    onError: (error) => setMessage(error instanceof Error ? error.message : "Failed to save specifications.")
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to save specifications.")
   });
 
   const latestId = useMemo(() => history.data?.history?.[0]?.id, [history.data?.history]);
   const isOldVersion = Boolean(latestId && latestId !== itemId);
+  const existingFgStructures = useMemo(
+    () => [...(fgStructures.data?.data ?? [])].sort((a, b) => b.version - a.version),
+    [fgStructures.data?.data]
+  );
+  const existingDraftStructure = useMemo(
+    () => existingFgStructures.find((entry) => entry.status === "IN_WORK"),
+    [existingFgStructures]
+  );
   const attributes =
     item.data?.attributes && typeof item.data.attributes === "object" && !Array.isArray(item.data.attributes)
       ? (item.data.attributes as Record<string, unknown>)
@@ -297,8 +467,12 @@ export function ItemDetailPage(): JSX.Element {
   const viscosityUnit = "cP";
   const phUnit = "pH";
   const flashPointUnit = "C";
-  const canCheckout = item.data?.status === "DRAFT";
-  const canEdit = item.data?.status === "UNDER_CHANGE";
+  const currentUserId = (JSON.parse(localStorage.getItem("plm_user") || "{}") as { id?: string }).id ?? "";
+  const currentUserRole = (JSON.parse(localStorage.getItem("plm_user") || "{}") as { role?: string }).role ?? "";
+  const isAdmin = ["System Admin", "PLM Admin", "Container Admin"].includes(currentUserRole);
+  const canCheckout = item.data?.status === "IN_WORK";
+  const isCheckedOutByMe = item.data?.checkedOutById === currentUserId;
+  const canEdit = item.data?.status === "IN_WORK" && isCheckedOutByMe;
 
   useEffect(() => {
     if (!item.data || isEditingItem) {
@@ -326,14 +500,33 @@ export function ItemDetailPage(): JSX.Element {
     return <div className="rounded-lg bg-white p-4">Loading item details...</div>;
   }
 
-  const itemActions: Array<{ key: ObjectActionKey; label: string; disabled?: boolean; danger?: boolean }> = [
-    { key: "create_release", label: "Create Release" },
-    { key: "create_change", label: "Create Change" },
-    { key: "checkout", label: "Check Out", disabled: !canCheckout },
-    { key: "checkin", label: "Check In", disabled: !canEdit },
+  const currentStatus = item.data?.status ?? "";
+  const itemActions: Array<{ key: ObjectActionKey; label: string; disabled?: boolean; title?: string; danger?: boolean }> = [
+    {
+      key: "create_release",
+      label: "Create Release",
+      disabled: currentStatus !== "IN_WORK",
+      title: currentStatus !== "IN_WORK"
+        ? "Release Requests can only be raised on In Work items. Raise a Change Request first to revise a Released item."
+        : "Open the Release Request wizard with this item pre-loaded"
+    },
+    {
+      key: "create_change",
+      label: "Create Change",
+      disabled: currentStatus !== "RELEASED",
+      title: currentStatus !== "RELEASED"
+        ? "Change Requests can only be raised on Released items. The item must be Released before raising a change."
+        : "Open the Change Request wizard with this item pre-loaded"
+    },
     { key: "revise", label: "Revise" },
-    { key: "copy", label: "Copy" },
-    { key: "delete", label: "Delete", danger: true }
+    { key: "copy", label: "Save as Copy" },
+    {
+      key: "create_npd" as ObjectActionKey,
+      label: "Start NPD Project",
+      disabled: false,
+      title: "Create an NPD project with this FG item as the primary product"
+    },
+    ...(isAdmin ? [{ key: "delete" as ObjectActionKey, label: "Delete", danger: true }] : [])
   ];
 
   async function runItemAction(action: ObjectActionKey): Promise<void> {
@@ -343,78 +536,114 @@ export function ItemDetailPage(): JSX.Element {
     }
     try {
       if (action === "create_release") {
-        await api.post("/releases", {
-          title: `Release ${current.itemCode}`,
-          description: `Release request created from ${current.itemCode} - ${current.name}.`,
-          containerId: selectedContainerId || undefined,
-          targetItems: [current.id],
-          targetBoms: [],
-          targetFormulas: [],
-          status: "NEW"
+        // Navigate to releases list with item pre-seeded in the wizard
+        const params = new URLSearchParams({
+          fromItemId: current.id,
+          fromItemCode: current.itemCode,
+          fromItemName: current.name,
+          fromItemStatus: current.status
         });
-        setMessage(`Release request created for ${current.itemCode}.`);
+        navigate(`/releases?${params.toString()}`);
+        return;
       } else if (action === "create_change") {
-        await api.post("/changes", {
-          title: `Change for ${current.itemCode}`,
-          description: `Change request created from ${current.itemCode} - ${current.name}.`,
-          containerId: selectedContainerId || undefined,
-          type: "ECR",
-          priority: "MEDIUM",
-          status: "NEW",
-          affectedItems: [current.itemCode],
-          affectedFormulas: []
+        // Navigate to changes list with item pre-seeded in the wizard
+        const params = new URLSearchParams({
+          fromItemId: current.id,
+          fromItemCode: current.itemCode,
+          fromItemName: current.name,
+          fromItemStatus: current.status
         });
-        setMessage(`Change request created for ${current.itemCode}.`);
+        navigate(`/changes?${params.toString()}`);
+        return;
       } else if (action === "checkout") {
-        await api.post(`/items/${current.id}/check-out`);
-        setMessage(`Item ${current.itemCode} checked out.`);
+        await api.post(`/items/${current.id}/checkout`);
+        toast.success(`Item ${current.itemCode} checked out.`);
         await queryClient.invalidateQueries({ queryKey: ["item-detail", itemId] });
       } else if (action === "checkin") {
-        await api.post(`/items/${current.id}/check-in`);
-        setMessage(`Item ${current.itemCode} checked in.`);
+        await api.post(`/items/${current.id}/checkin`);
+        toast.success(`Item ${current.itemCode} checked in.`);
         await queryClient.invalidateQueries({ queryKey: ["item-detail", itemId] });
       } else if (action === "copy") {
         await api.post(`/items/${current.id}/copy`);
-        setMessage(`Copy created for ${current.itemCode}.`);
+        toast.success(`Copy created for ${current.itemCode}.`);
       } else if (action === "revise") {
         await api.post(`/items/${current.id}/revise`);
-        setMessage(`Revision created for ${current.itemCode}.`);
+        toast.success(`Revision created for ${current.itemCode}.`);
       } else if (action === "delete") {
         if (!window.confirm(`Delete item ${current.itemCode}?`)) {
           return;
         }
         await api.delete(`/items/${current.id}`);
-        setMessage(`Item ${current.itemCode} deleted.`);
+        toast.success(`Item ${current.itemCode} deleted.`);
+      } else if (action === "create_npd") {
+        const params = new URLSearchParams({
+          fromItemId: current.id,
+          fromItemCode: current.itemCode,
+          fromItemName: current.name
+        });
+        navigate(`/npd?${params.toString()}`);
+        return;
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Action failed");
+      toast.error(error instanceof Error ? error.message : "Action failed");
     }
+  }
+
+  function updateFgLine(index: number, patch: Partial<{ lineNumber: string; itemId: string; quantity: string; uom: string }>): void {
+    setFgLines((prev) => prev.map((line, lineIndex) => (lineIndex === index ? { ...line, ...patch } : line)));
+  }
+
+  function addFgLine(): void {
+    setFgLines((prev) => [...prev, { lineNumber: String((prev.length + 1) * 10), itemId: "", quantity: "", uom: "ea" }]);
+  }
+
+  function removeFgLine(index: number): void {
+    setFgLines((prev) => (prev.length === 1 ? prev : prev.filter((_, lineIndex) => lineIndex !== index)));
   }
 
   return (
     <div className="space-y-4 rounded-xl bg-white p-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="rounded-full bg-slate-100 p-2">
-            {item.data ? <EntityIcon kind="item" variant={item.data.itemType} size={20} /> : null}
-          </div>
-          <div>
-            <p className="font-mono text-sm text-slate-500">{item.data?.itemCode}</p>
-            <h2 className="font-heading text-xl">{item.data?.name}</h2>
-            <p className="text-sm text-slate-500">
-              {item.data?.itemType} | {item.data?.uom} | {item.data?.status}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <ObjectActionsMenu onAction={(action) => void runItemAction(action)} actions={itemActions} />
-          <Link to="/items" className="rounded border border-slate-300 bg-white px-3 py-1 text-sm">
-            Back to Items
-          </Link>
-        </div>
+      <DetailHeaderCard
+        icon={item.data ? <EntityIcon kind="item" variant={item.data.itemType} size={20} /> : null}
+        code={item.data?.itemCode}
+        title={item.data?.name ?? "Item"}
+        meta={`${item.data?.itemType ?? "-"} | ${item.data?.uom ?? "-"}`}
+        backTo="/items"
+        backLabel="Back to Items"
+        actions={
+          <>
+            {item.data?.itemType === "FINISHED_GOOD" ? (
+              <Link
+                to={`/items/${itemId}/thread`}
+                className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+              >
+                Digital Thread
+              </Link>
+            ) : null}
+            <ObjectActionsMenu onAction={(action) => void runItemAction(action)} actions={itemActions} />
+          </>
+        }
+      />
+      {item.data ? (
+        <CheckoutBar
+          entityType="items"
+          entityId={itemId}
+          info={{
+            checkedOutById: item.data.checkedOutById,
+            checkedOutBy: item.data.checkedOutBy,
+            checkedOutAt: item.data.checkedOutAt,
+            status: item.data.status
+          }}
+          currentUserId={currentUserId}
+          isAdmin={isAdmin}
+          queryKey={["item-detail", itemId]}
+        />
+      ) : null}
+      <div className="flex items-center gap-2 text-sm text-slate-500">
+        <span>Status</span>
+        <StatusBadge status={item.data?.status} />
       </div>
 
-      {message ? <p className="rounded border border-slate-200 bg-slate-50 p-2 text-sm text-slate-700">{message}</p> : null}
 
       <div className="flex items-center gap-2 border-b border-slate-200 text-sm">
         <button
@@ -424,6 +653,15 @@ export function ItemDetailPage(): JSX.Element {
         >
           Details
         </button>
+        {item.data?.itemType === "FINISHED_GOOD" ? (
+          <button
+            type="button"
+            onClick={() => setActiveTab("structure")}
+            className={`px-3 py-2 ${activeTab === "structure" ? "border-b-2 border-primary font-medium text-primary" : "text-slate-500"}`}
+          >
+            Structure
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={() => setActiveTab("specs")}
@@ -521,6 +759,7 @@ export function ItemDetailPage(): JSX.Element {
                   type="button"
                   onClick={() => setIsEditingItem(true)}
                   disabled={!canEdit}
+                  title={!canEdit ? "Check out the item to edit" : undefined}
                   className="rounded border border-slate-300 bg-white px-3 py-1 text-xs disabled:opacity-60"
                 >
                   Edit Details
@@ -604,7 +843,7 @@ export function ItemDetailPage(): JSX.Element {
             <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm">
               <p className="mb-1 font-medium">Used In BOMs</p>
               {links.data?.bomUsages.map((usage) => (
-                <Link key={usage.id} to={`/bom/${usage.bom.id}`} className="block text-primary hover:underline">
+                <Link key={usage.id} to={`/fg/${usage.bom.id}`} className="block text-primary hover:underline">
                   {usage.bom.bomCode} v{usage.bom.version} ({usage.bom.type})
                 </Link>
               ))}
@@ -666,6 +905,7 @@ export function ItemDetailPage(): JSX.Element {
                       <th className="px-3 py-2">Status</th>
                       <th className="px-3 py-2">File</th>
                       <th className="px-3 py-2">Created</th>
+                      <th className="px-3 py-2">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -685,6 +925,15 @@ export function ItemDetailPage(): JSX.Element {
                           </a>
                         </td>
                         <td className="px-3 py-2">{new Date(doc.createdAt).toLocaleDateString()}</td>
+                        <td className="px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => { if (window.confirm("Remove this document link?")) { unlinkDocument.mutate(doc.id); } }}
+                            className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] text-red-600 hover:bg-red-100"
+                          >
+                            Unlink
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -694,6 +943,213 @@ export function ItemDetailPage(): JSX.Element {
               <p className="text-slate-500">No documents linked to this item.</p>
             )}
           </div>
+        </div>
+      ) : activeTab === "structure" ? (
+        <div className="space-y-3">
+          {item.data?.itemType !== "FINISHED_GOOD" ? (
+            <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+              Structure is only available for Finished Good items.
+            </div>
+          ) : (
+            <>
+              <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="font-medium">Create Finished Good Structure</p>
+                </div>
+                {existingDraftStructure ? (
+                  <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    Draft already exists (v{existingDraftStructure.version}). Edit that draft before creating a new revision.
+                  </div>
+                ) : null}
+                <div className="grid gap-2 md:grid-cols-2">
+                  <FloatingSelect
+                    label="Input Formula"
+                    value={fgDraft.formulaId}
+                    onChange={(event) => setFgDraft((prev) => ({ ...prev, formulaId: event.target.value }))}
+                  >
+                    <option value="">Select Formula</option>
+                    {(formulaOptions.data?.data ?? []).map((formula) => (
+                      <option key={formula.id} value={formula.id}>
+                        {formula.formulaCode} v{formula.version} - {formula.name}
+                      </option>
+                    ))}
+                  </FloatingSelect>
+                  <FloatingInput
+                    label="Effective Date"
+                    type="date"
+                    value={fgDraft.effectiveDate}
+                    onChange={(event) => setFgDraft((prev) => ({ ...prev, effectiveDate: event.target.value }))}
+                  />
+                </div>
+                <div className="mt-3 overflow-x-auto rounded border border-slate-200 bg-white">
+                  <table className="w-full min-w-[640px] text-left text-xs">
+                    <thead className="bg-slate-100 text-[11px] uppercase text-slate-500">
+                      <tr>
+                        <th className="px-2 py-2">Line</th>
+                        <th className="px-2 py-2">Packaging Item</th>
+                        <th className="px-2 py-2">Qty</th>
+                        <th className="px-2 py-2">UOM</th>
+                        <th className="px-2 py-2">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fgLines.map((line, index) => (
+                        <tr key={`${line.lineNumber}-${index}`} className="border-t border-slate-100">
+                          <td className="px-2 py-2">
+                            <input
+                              value={line.lineNumber}
+                              onChange={(event) => updateFgLine(index, { lineNumber: event.target.value })}
+                              className="w-20 rounded border border-slate-300 px-2 py-1 text-xs"
+                            />
+                          </td>
+                          <td className="px-2 py-2">
+                            <select
+                              value={line.itemId}
+                              onChange={(event) => updateFgLine(index, { itemId: event.target.value })}
+                              className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                            >
+                              <option value="">Select Packaging</option>
+                              {(packagingOptions.data?.data ?? []).map((option) => (
+                                <option key={option.id} value={option.id}>
+                                  {option.itemCode} - {option.name}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-2 py-2">
+                            <input
+                              value={line.quantity}
+                              onChange={(event) => updateFgLine(index, { quantity: event.target.value })}
+                              className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                            />
+                          </td>
+                          <td className="px-2 py-2">
+                            <select
+                              value={line.uom}
+                              onChange={(event) => updateFgLine(index, { uom: event.target.value })}
+                              className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                            >
+                              {(uomsQuery.data?.data ?? STANDARD_UOMS).map((uom) => (
+                                <option key={uom.value} value={uom.value}>
+                                  {uom.value}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-2 py-2">
+                            <button
+                              type="button"
+                              onClick={() => removeFgLine(index)}
+                              className="rounded border border-slate-300 px-2 py-1 text-[11px]"
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <button type="button" onClick={addFgLine} className="rounded border border-slate-300 bg-white px-3 py-1 text-xs">
+                    Add Packaging Line
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => createFgStructure.mutate()}
+                    disabled={createFgStructure.isPending || !fgDraft.formulaId || Boolean(existingDraftStructure)}
+                    title={
+                      !fgDraft.formulaId
+                        ? "Select a formula first"
+                        : existingDraftStructure
+                          ? "A draft structure already exists — revise the existing one instead"
+                          : undefined
+                    }
+                    className="rounded bg-primary px-3 py-1 text-xs font-medium text-white disabled:opacity-60"
+                  >
+                    {createFgStructure.isPending ? "Creating..." : "Create Structure"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm">
+                <p className="mb-2 font-medium">Existing Structures</p>
+                {fgStructures.isLoading ? (
+                  <p className="text-slate-500">Loading structures...</p>
+                ) : existingFgStructures.length ? (
+                  <div className="space-y-2">
+                    {existingFgStructures.map((structure, index) => (
+                      <div key={structure.id} className="rounded border border-slate-200 bg-white p-3">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <div>
+                            <p className="font-mono text-xs text-slate-500">
+                              v{structure.version} ({structure.revisionLabel}){index === 0 ? " · Latest" : ""}
+                            </p>
+                            <p className="text-sm font-medium text-slate-800">
+                              {structure.formula
+                                ? `${structure.formula.formulaCode} v${structure.formula.version} - ${structure.formula.name}`
+                                : "No formula linked"}
+                            </p>
+                          </div>
+                          <StatusBadge status={structure.status} />
+                        </div>
+                        <div className="overflow-x-auto rounded border border-slate-200">
+                          <table className="w-full text-left text-xs">
+                            <thead className="bg-slate-100 text-[11px] uppercase text-slate-500">
+                              <tr>
+                                <th className="px-2 py-1">Line</th>
+                                <th className="px-2 py-1">Packaging</th>
+                                <th className="px-2 py-1">Qty</th>
+                                <th className="px-2 py-1">UOM</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(structure.packagingLines ?? []).map((line) => (
+                                <tr key={line.id ?? `${line.itemId}-${line.lineNumber}`} className="border-t border-slate-100">
+                                  <td className="px-2 py-1">{line.lineNumber ?? "—"}</td>
+                                  <td className="px-2 py-1">
+                                    {line.item ? `${line.item.itemCode} - ${line.item.name}` : "Unknown"}
+                                  </td>
+                                  <td className="px-2 py-1">{line.quantity}</td>
+                                  <td className="px-2 py-1">{line.uom}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <div className="mt-2">
+                          <div className="flex items-center gap-2">
+                            {structure.status === "IN_WORK" ? (
+                              <Link to={`/fg/${structure.id}`} className="rounded border border-slate-300 px-2 py-1 text-xs">
+                                Edit Structure
+                              </Link>
+                            ) : (
+                              <Link to={`/fg/${structure.id}`} className="rounded border border-slate-300 px-2 py-1 text-xs">
+                                Open Structure
+                              </Link>
+                            )}
+                            {structure.status !== "IN_WORK" ? (
+                              <button
+                                type="button"
+                                onClick={() => reviseFgStructure.mutate(structure.id)}
+                                disabled={reviseFgStructure.isPending || Boolean(existingDraftStructure)}
+                                title={existingDraftStructure ? "A draft structure already exists — complete it before creating another revision" : undefined}
+                                className="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-60"
+                              >
+                                Revise to Draft
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-slate-500">No FG structure exists for this item yet.</p>
+                )}
+              </div>
+            </>
+          )}
         </div>
       ) : activeTab === "specs" ? (
         <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm">
@@ -720,6 +1176,7 @@ export function ItemDetailPage(): JSX.Element {
                   setIsEditingSpecs(true);
                 }}
                 disabled={!canEdit}
+                title={!canEdit ? "Check out the item to edit specifications" : undefined}
                 className="rounded border border-slate-300 bg-white px-3 py-1 text-xs disabled:opacity-60"
               >
                 Edit Specs
@@ -987,29 +1444,60 @@ export function ItemDetailPage(): JSX.Element {
           </div>
         </div>
       ) : (
-        <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm">
-          <p className="mb-2 font-medium">Item Version History</p>
-          {history.data?.history?.length ? (
-            <div className="space-y-2">
-              {history.data.history.map((entry) => (
-                <Link
-                  key={entry.id}
-                  to={`/items/${entry.id}`}
-                  className={`block rounded border px-3 py-2 ${
-                    entry.id === itemId ? "border-primary bg-white" : "border-slate-200 bg-white hover:border-primary"
-                  }`}
-                >
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-mono">{entry.itemCode}</span>
-                    <span className="text-slate-500">{entry.revisionLabel}</span>
-                  </div>
-                  <div className="text-xs text-slate-500">Status: {entry.status}</div>
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <p className="text-slate-500">No previous versions.</p>
-          )}
+        <div className="space-y-4">
+          <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm">
+            <p className="mb-2 font-medium">Item Version History</p>
+            {history.data?.history?.length ? (
+              <div className="space-y-2">
+                {history.data.history.map((entry) => (
+                  <Link
+                    key={entry.id}
+                    to={`/items/${entry.id}`}
+                    className={`block rounded border px-3 py-2 ${
+                      entry.id === itemId ? "border-primary bg-white" : "border-slate-200 bg-white hover:border-primary"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-mono">{entry.itemCode}</span>
+                      <span className="text-slate-500">{entry.revisionLabel}</span>
+                    </div>
+                    <div className="text-xs text-slate-500">Status: {entry.status}</div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="text-slate-500">No previous versions.</p>
+            )}
+          </div>
+          <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm">
+            <p className="mb-2 font-medium">Audit Trail</p>
+            {auditLog.isLoading ? (
+              <p className="text-slate-400">Loading audit log...</p>
+            ) : (auditLog.data?.data?.length ?? 0) === 0 ? (
+              <p className="text-slate-500">No audit events recorded.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-400">
+                      <th className="pb-1 pr-4 text-left font-medium">Action</th>
+                      <th className="pb-1 pr-4 text-left font-medium">By</th>
+                      <th className="pb-1 text-left font-medium">When</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {auditLog.data!.data.map((entry) => (
+                      <tr key={entry.id} className="border-b border-slate-100">
+                        <td className="py-1 pr-4 font-mono uppercase text-slate-600">{entry.action}</td>
+                        <td className="py-1 pr-4 text-slate-600">{entry.actorName}</td>
+                        <td className="py-1 text-slate-400">{new Date(entry.createdAt).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

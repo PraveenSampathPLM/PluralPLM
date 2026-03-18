@@ -9,9 +9,11 @@ import {
   Layers as BomIcon,
   FileText as DocIcon,
   GitCompare as ChangeIcon,
-  Rocket as ReleaseIcon
+  Rocket as ReleaseIcon,
+  Palette as ArtworkIcon
 } from "lucide-react";
 import { EntityIcon } from "@/components/entity-icon";
+import { StatusBadge } from "@/components/status-badge";
 
 interface SearchResultRow {
   id: string;
@@ -67,8 +69,8 @@ const entityConfigs = [
     key: "bom",
     label: "BOMs",
     icon: BomIcon,
-    endpoint: "/bom",
-    to: (row: SearchResultRow) => `/bom/${row.id}`,
+    endpoint: "/fg",
+    to: (row: SearchResultRow) => `/fg/${row.id}`,
     map: (row: any): SearchResultRow => ({
       id: row.id,
       code: row.bomCode ?? row.code ?? "BOM",
@@ -116,6 +118,20 @@ const entityConfigs = [
       code: row.rrNumber ?? row.releaseNumber ?? row.code,
       name: row.title ?? "Release",
       type: row.type,
+      status: row.status
+    })
+  },
+  {
+    key: "artworks",
+    label: "Artworks",
+    icon: ArtworkIcon,
+    endpoint: "/artworks",
+    to: (row: SearchResultRow) => `/artworks/${row.id}`,
+    map: (row: any): SearchResultRow => ({
+      id: row.id,
+      code: row.artworkCode,
+      name: row.title,
+      type: row.market ?? row.brand,
       status: row.status
     })
   }
@@ -188,10 +204,15 @@ export function AdvancedSearchPage(): JSX.Element {
       bom: [],
       documents: [],
       changes: [],
-      releases: []
+      releases: [],
+      artworks: []
     };
     queries.forEach((q, idx) => {
-      const key = entityConfigs[idx].key;
+      const config = entityConfigs[idx];
+      if (!config) {
+        return;
+      }
+      const key = config.key;
       if (q.data) {
         map[key as EntityKey] = q.data as SearchResultRow[];
       }
@@ -205,7 +226,7 @@ export function AdvancedSearchPage(): JSX.Element {
         <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Advanced Search</p>
         <h1 className="mt-2 font-heading text-2xl font-semibold text-slate-900">Search across Plural PLM</h1>
         <p className="mt-2 text-sm text-slate-600">
-          Search materials, formulations, BOMs, documents, and lifecycle records with one query. Results are scoped to
+          Search materials, formulations, FG structures, artworks, documents, and lifecycle records with one query. Results are scoped to
           your selected container.
         </p>
         <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center">
@@ -376,7 +397,7 @@ export function AdvancedSearchPage(): JSX.Element {
                     <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{config.label}</p>
                     <p className="text-sm text-slate-600">{rows.length} result(s)</p>
                   </div>
-                  {queryResult.isFetching ? <p className="text-xs text-slate-500">Loading…</p> : null}
+                  {queryResult?.isFetching ? <p className="text-xs text-slate-500">Loading...</p> : null}
                 </div>
                 {isLoading && !rows.length ? (
                   <div className="mt-3 h-16 animate-pulse rounded-lg bg-slate-100" />
@@ -411,7 +432,9 @@ export function AdvancedSearchPage(): JSX.Element {
                               </Link>
                             </td>
                             <td className="px-3 py-2 text-slate-600">{row.type ?? "—"}</td>
-                            <td className="px-3 py-2 text-slate-600">{row.status ?? "—"}</td>
+                            <td className="px-3 py-2 text-slate-600">
+                              {row.status ? <StatusBadge status={row.status} /> : "—"}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
