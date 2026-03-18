@@ -32,16 +32,27 @@ Plural PLM is purpose-built for process:
 ## Key Modules
 
 ### Formulation Management
-Build multi-level formulas with ingredients, quantities, and processing instructions. Every change is versioned. Compare revisions side-by-side. Digital thread links the formula to its raw materials, specifications, documents, changes, releases, and NPD project — all in one view.
+Build multi-level formulas with ingredients, quantities, and processing instructions. Every change is versioned. Compare revisions side-by-side. Digital thread links the formula to its raw materials, specifications, documents, changes, releases, and NPD project — all in one view. Autocreate MSDS documetn for regulatory submission.
+
+<img width="1634" height="779" alt="image" src="https://github.com/user-attachments/assets/735e3b36-fe5d-4c73-9a34-b9002b1caca6" />
+
 
 ### NPD Stage-Gate
 Run structured new product development with configurable gate criteria. Must-meet and should-meet criteria evaluated at each gate review. Gate 5 (Launch GO) automatically triggers a release request. FG items and formulas are created as deliverables within the project, not manual fields.
 
+<img width="1936" height="543" alt="image" src="https://github.com/user-attachments/assets/e409f26d-c3f4-44f2-bbcc-2f4fcb5b23b5" />
+
+
 ### Regulatory Labeling
 Link a label template to a formula and click **Generate** — Plural recursively walks the entire formula tree, sorts ingredients by weight (compliant with FSSAI, EU 1169, FDA), detects allergens from material attributes, and populates the full label: ingredient statement, allergen declaration, nutrition panel, shelf life, country of origin, batch format. Edit and save as a numbered label document.
 
+<img width="1321" height="844" alt="image" src="https://github.com/user-attachments/assets/81b943eb-b343-42d6-ab00-f3d68a469b17" />
+
+
 ### Change Control
 Raise change requests, attach affected materials/formulas/documents, route through workflow sign-off, and link to downstream releases. Full audit trail on every object.
+
+<img width="1630" height="548" alt="image" src="https://github.com/user-attachments/assets/6498b5d1-bff3-419a-94ea-d8e8a90a818f" />
 
 ### Release Management
 Package a set of BOMs, formulas, and documents into a release request. Track readiness by linked object. Release reports show percentage readiness per release across the portfolio.
@@ -49,8 +60,14 @@ Package a set of BOMs, formulas, and documents into a release request. Track rea
 ### Compliance & Specifications
 Attach parameter-based specification sheets (physico-chemical, nutritional, regulatory) to materials and formulas. Compliance module checks formula specs against target ranges.
 
+<img width="813" height="376" alt="image" src="https://github.com/user-attachments/assets/cf6ecee3-99e2-4d5d-a7fb-04e07d1d39a8" />
+
+
 ### Enterprise Reporting
 Out-of-the-box reports: KPI dashboard, change aging, release readiness, NPD pipeline status, FG items missing formulas, items by lifecycle status. One-click CSV export.
+
+<img width="1651" height="594" alt="image" src="https://github.com/user-attachments/assets/367b0466-e09b-4f2c-9d7a-85ca8806c270" />
+
 
 ### Digital Twin of the Product with Traceability
 <img width="1446" height="606" alt="image" src="https://github.com/user-attachments/assets/16cdbf6f-b525-4564-9861-d7f1ed9915c4" />
