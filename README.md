@@ -4,7 +4,7 @@
 
 Plural PLM gives food & beverage, CPG, chemical, paint, rubber, and polymer manufacturers a single system of record — from raw material to shelf. Formula management, stage-gate NPD, regulatory labeling, change control, and release management, all in one place.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: Non-Commercial](https://img.shields.io/badge/License-Non--Commercial-orange.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/Node-22-green.svg)](https://nodejs.org)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue.svg)](https://postgresql.org)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED.svg)](docker-compose.prod.yml)
