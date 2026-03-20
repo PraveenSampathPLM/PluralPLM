@@ -26,7 +26,7 @@ Plural PLM is purpose-built for process:
 | No visibility into NPD progress | Stage-gate project management (Idea → Concept → Development → Launch) with gate review sign-offs |
 | Change requests lost in email | Structured change control with affected object tracking and multi-role sign-off |
 | Specs, docs, and labels in different systems | Unified document control, spec sheets, and label templates — all linked to the formula |
-| Onboarding a new ERP takes 12+ months | Docker-based deployment, open-source, self-hosted in under 10 minutes |
+| Onboarding a new ERP takes 12+ months | Docker-based deployment, self-hosted in under 10 minutes, no commerical dependencies |
 
 ---
 
