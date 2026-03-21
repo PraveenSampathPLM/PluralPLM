@@ -123,10 +123,31 @@ Open `http://localhost` — done.
 
 ## Development Setup
 
+### One-command start (macOS with Colima)
+
+```bash
+# Clone and install dependencies first
+git clone https://github.com/PraveenSampathPLM/PluralPLM.git && cd PluralPLM
+npm install
+
+# Then just run:
+./start-dev.sh
+```
+
+`start-dev.sh` handles everything in one shot:
+- Starts **Colima** (auto-clears stale disk locks from crashed sessions)
+- Starts **Postgres + Redis** via Docker and waits until healthy
+- Runs **Prisma migrations**
+- Starts **backend** (port 4000) and **frontend** (port 5173)
+- Press **Ctrl+C** to cleanly stop all services
+
+### Manual setup
+
 ```bash
 # Prerequisites: Node 22, Docker / Colima
 
 npm install                                    # install all workspace deps
+colima start                                   # start Colima (macOS)
 docker compose up -d                           # start Postgres + Redis
 cp .env.example .env                           # default dev config works out of the box
 npm run prisma:migrate -w @plm/backend         # apply migrations

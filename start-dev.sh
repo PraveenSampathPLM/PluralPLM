@@ -37,7 +37,7 @@ fi
 
 # ── 2. Docker containers (Postgres + Redis) ──────────────────────────────────
 info "Starting Docker containers (Postgres + Redis)..."
-docker compose up -d
+docker-compose up -d
 
 info "Waiting for Postgres to be healthy..."
 for i in {1..30}; do
