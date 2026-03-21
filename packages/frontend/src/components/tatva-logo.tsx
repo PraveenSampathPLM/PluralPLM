@@ -6,26 +6,19 @@ interface TatvaLogoProps {
 
 export function TatvaLogo({ compact = false }: TatvaLogoProps): JSX.Element {
   if (compact) {
-    // Tricolor chemistry atom — icon only for collapsed sidebar
+    // Tricolor dot-ring — icon only for collapsed sidebar
     return (
-      <svg width="36" height="36" viewBox="-56 -56 112 112" aria-label="Tatva">
-        {/* Saffron orbit */}
-        <ellipse cx="0" cy="0" rx="44" ry="15" stroke="#FF9933" strokeWidth="2.5" fill="none" transform="rotate(0)"/>
-        {/* Green orbit */}
-        <ellipse cx="0" cy="0" rx="44" ry="15" stroke="#138808" strokeWidth="2.5" fill="none" transform="rotate(60)"/>
-        {/* Navy orbit */}
-        <ellipse cx="0" cy="0" rx="44" ry="15" stroke="#1A237E" strokeWidth="2.5" fill="none" transform="rotate(-60)"/>
-        {/* Electrons */}
-        <circle cx="44"  cy="0"   r="7" fill="#FF9933"/>
-        <circle cx="44"  cy="0"   r="3.5" fill="white" opacity="0.8"/>
-        <circle cx="22"  cy="38"  r="7" fill="#138808"/>
-        <circle cx="22"  cy="38"  r="3.5" fill="white" opacity="0.8"/>
-        <circle cx="22"  cy="-38" r="7" fill="#1A237E"/>
-        <circle cx="22"  cy="-38" r="3.5" fill="white" opacity="0.8"/>
-        {/* Nucleus */}
-        <circle cx="0" cy="0" r="13" fill="#1A237E"/>
-        <circle cx="0" cy="0" r="8"  fill="white"/>
-        <circle cx="0" cy="0" r="4"  fill="#1A237E"/>
+      <svg width="36" height="36" viewBox="0 0 72 72" aria-label="Tatva" fill="none">
+        <circle cx="36" cy="36" r="26" stroke="#E2E8F0" strokeWidth="1.5"/>
+        {/* Saffron dot — top */}
+        <circle cx="36" cy="10" r="7" fill="#FF9933"/>
+        {/* Green dot — bottom-right */}
+        <circle cx="58.5" cy="49" r="7" fill="#138808"/>
+        {/* Navy dot — bottom-left */}
+        <circle cx="13.5" cy="49" r="7" fill="#1A237E"/>
+        {/* Centre nucleus */}
+        <circle cx="36" cy="36" r="5" fill="#1A237E"/>
+        <circle cx="36" cy="36" r="2.5" fill="white"/>
       </svg>
     );
   }
