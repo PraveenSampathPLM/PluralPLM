@@ -4,7 +4,7 @@
 
 Tatva gives food & beverage, CPG, chemical, paint, rubber, and polymer manufacturers a single system of record — from raw material to shelf. Formula management, stage-gate NPD, regulatory labeling, change control, and release management, all in one place.
 
-<img width="1709" height="889" alt="image" src="https://github.com/user-attachments/assets/99787e80-3a0b-4053-a851-3fb93155d8c4" />
+<img alt="Tatva — Product Lifecycle Management" src="docs/tatva-hero.svg" width="100%"/>
 
 [![License: Non-Commercial](https://img.shields.io/badge/License-Non--Commercial-orange.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/Node-22-green.svg)](https://nodejs.org)
