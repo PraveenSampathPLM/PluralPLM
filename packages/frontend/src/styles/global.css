@@ -18,3 +18,64 @@ body {
   scrollbar-width: thin;
   scrollbar-color: #94a3b8 #e2e8f0;
 }
+
+/* ── Tatva guided tour (driver.js overrides) ─────────────────────── */
+.driver-popover.tatva-tour-popover {
+  background: #0F2027;
+  color: #E2E8F0;
+  border: 1px solid #1E3A47;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  max-width: 340px;
+  font-family: inherit;
+}
+.driver-popover.tatva-tour-popover .driver-popover-title {
+  color: #FFFFFF;
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.driver-popover.tatva-tour-popover .driver-popover-description {
+  color: #94A3B8;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.driver-popover.tatva-tour-popover .driver-popover-progress-text {
+  color: #64748B;
+  font-size: 11px;
+}
+.driver-popover.tatva-tour-popover .driver-popover-footer button {
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.driver-popover.tatva-tour-popover .driver-popover-next-btn {
+  background: #1A7FB5;
+  color: #fff;
+  border: none;
+}
+.driver-popover.tatva-tour-popover .driver-popover-next-btn:hover {
+  background: #1565a0;
+}
+.driver-popover.tatva-tour-popover .driver-popover-prev-btn {
+  background: transparent;
+  color: #94A3B8;
+  border: 1px solid #1E3A47;
+}
+.driver-popover.tatva-tour-popover .driver-popover-close-btn {
+  color: #64748B;
+}
+.driver-popover.tatva-tour-popover .driver-popover-arrow-side-left.driver-popover-arrow {
+  border-right-color: #0F2027;
+}
+.driver-popover.tatva-tour-popover .driver-popover-arrow-side-right.driver-popover-arrow {
+  border-left-color: #0F2027;
+}
+.driver-popover.tatva-tour-popover .driver-popover-arrow-side-top.driver-popover-arrow {
+  border-bottom-color: #0F2027;
+}
+.driver-popover.tatva-tour-popover .driver-popover-arrow-side-bottom.driver-popover-arrow {
+  border-top-color: #0F2027;
+}

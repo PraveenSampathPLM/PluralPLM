@@ -6,11 +6,13 @@ import { useContainerStore } from "@/store/container.store";
 import { TatvaLogo } from "@/components/tatva-logo";
 import { useAuthStore } from "@/store/auth.store";
 import { EntityIcon } from "@/components/entity-icon";
+import { useAppTour } from "@/features/tour/use-app-tour";
 
 type NavItem = {
   to: string;
   label: string;
   icon: (props: { className?: string }) => JSX.Element;
+  tourId?: string;
 };
 
 type NavGroup = {
@@ -134,7 +136,7 @@ const navGroups: NavGroup[] = [
   {
     label: "",
     items: [
-      { to: "/", label: "Home", icon: IconHome },
+      { to: "/", label: "Home", icon: IconHome, tourId: "tour-nav-home" },
       { to: "/search", label: "Advanced Search", icon: IconSearch },
       { to: "/reports", label: "Reports", icon: IconChart }
     ]
@@ -145,6 +147,7 @@ const navGroups: NavGroup[] = [
       {
         to: "/npd",
         label: "NPD Projects",
+        tourId: "tour-nav-npd",
         icon: (props) => (
           <svg viewBox="0 0 24 24" aria-hidden="true" className={props.className}>
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
@@ -152,15 +155,15 @@ const navGroups: NavGroup[] = [
         )
       },
       { to: "/tasks", label: "My Tasks", icon: IconTasks },
-      { to: "/changes", label: "Changes", icon: (props) => <EntityIcon kind="change" {...props} /> },
-      { to: "/releases", label: "Releases", icon: (props) => <EntityIcon kind="release" {...props} /> }
+      { to: "/changes", label: "Changes", icon: (props) => <EntityIcon kind="change" {...props} />, tourId: "tour-nav-changes" },
+      { to: "/releases", label: "Releases", icon: (props) => <EntityIcon kind="release" {...props} />, tourId: "tour-nav-releases" }
     ]
   },
   {
     label: "Design",
     items: [
-      { to: "/items", label: "Items", icon: (props) => <EntityIcon kind="item" {...props} /> },
-      { to: "/formulas", label: "Formulas", icon: (props) => <EntityIcon kind="formula" {...props} /> },
+      { to: "/items", label: "Items", icon: (props) => <EntityIcon kind="item" {...props} />, tourId: "tour-nav-items" },
+      { to: "/formulas", label: "Formulas", icon: (props) => <EntityIcon kind="formula" {...props} />, tourId: "tour-nav-formulas" },
       { to: "/fg", label: "FG Structures", icon: (props) => <EntityIcon kind="bom" {...props} /> },
       { to: "/artworks", label: "Artworks", icon: (props) => <EntityIcon kind="artwork" {...props} /> }
     ]
@@ -170,7 +173,7 @@ const navGroups: NavGroup[] = [
     items: [
       { to: "/documents", label: "Documents", icon: (props) => <EntityIcon kind="document" {...props} /> },
       { to: "/specifications", label: "Specifications", icon: IconFolder },
-      { to: "/labeling", label: "Labeling", icon: IconTag }
+      { to: "/labeling", label: "Labeling", icon: IconTag, tourId: "tour-nav-labeling" }
     ]
   },
   {
@@ -238,6 +241,7 @@ export function AppLayout(): JSX.Element {
   const { selectedContainerId, setSelectedContainerId } = useContainerStore();
   const clearAuth = useAuthStore((state) => state.clearAuth);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const { startTour } = useAppTour(true);
   const containers = useQuery({
     queryKey: ["layout-container-options"],
     queryFn: async () => (await api.get<{ data: Array<{ id: string; code: string; name: string }> }>("/containers")).data
@@ -321,7 +325,7 @@ export function AppLayout(): JSX.Element {
   return (
     <div className="min-h-screen bg-mainbg">
       <aside className="fixed left-0 top-0 h-screen w-64 border-r border-slate-800/80 bg-sidebar px-4 py-5 text-slate-100 shadow-2xl shadow-slate-900/25">
-        <nav className="mt-8">
+        <nav id="tour-sidebar-nav" className="mt-8">
           {navGroups.map((group, groupIndex) => (
             <div key={group.label} className={groupIndex === 0 ? "" : "mt-6"}>
               {group.label ? <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{group.label}</p> : null}
@@ -333,6 +337,7 @@ export function AppLayout(): JSX.Element {
                     <Link
                       key={item.to}
                       to={item.to}
+                      id={item.tourId}
                       className={`group flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
                         active
                           ? "bg-gradient-to-r from-primary to-[#245e86] text-white"
@@ -382,6 +387,7 @@ export function AppLayout(): JSX.Element {
           </div>
           <div className="flex items-center gap-3">
             <select
+              id="tour-container-selector"
               value={selectedContainerId}
               onChange={(event) => setSelectedContainerId(event.target.value)}
               className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs shadow-sm"
@@ -393,9 +399,19 @@ export function AppLayout(): JSX.Element {
                 </option>
               ))}
             </select>
-            <Link to="/help" className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700">
-              Help Center
-            </Link>
+            <div id="tour-help-center" className="flex items-center gap-1">
+              <Link to="/help" className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700">
+                Help Center
+              </Link>
+              <button
+                type="button"
+                onClick={startTour}
+                title="Take a tour"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+              >
+                Take a Tour
+              </button>
+            </div>
             <div className="relative">
               <button
                 type="button"
