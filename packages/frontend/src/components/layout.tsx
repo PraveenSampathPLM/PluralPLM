@@ -134,7 +134,7 @@ const navGroups: NavGroup[] = [
   {
     label: "Home",
     items: [
-      { to: "/", label: "Dashboard", icon: IconHome },
+      { to: "/", label: "Home", icon: IconHome },
       { to: "/search", label: "Advanced Search", icon: IconSearch },
       { to: "/reports", label: "Reports", icon: IconChart }
     ]
@@ -382,7 +382,7 @@ export function AppLayout(): JSX.Element {
                 })}
               </nav>
             ) : (
-              <p className="text-xs text-slate-500">Product Lifecycle Platform</p>
+              <p className="text-xs text-slate-500">Home</p>
             )}
           </div>
           <div className="flex items-center gap-3">

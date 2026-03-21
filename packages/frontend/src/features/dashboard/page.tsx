@@ -323,7 +323,7 @@ export function DashboardPage(): JSX.Element {
     <div className="space-y-5">
       <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Dashboard</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Home</p>
           <h2 className="font-heading text-2xl text-slate-900">Process PLM Control Tower</h2>
           <p className="text-sm text-slate-500">Analytics, workflow, and object access in one view.</p>
         </div>
