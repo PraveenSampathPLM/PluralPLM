@@ -24,6 +24,12 @@ fi
 if colima status 2>/dev/null | grep -q "Running"; then
   success "Colima already running"
 else
+  # Clear stale Lima disk lock if left behind by a crashed previous run
+  DISK_LOCK="/Users/$(whoami)/.colima/_lima/_disks/colima/in_use_by"
+  if [ -L "$DISK_LOCK" ]; then
+    warn "Removing stale Colima disk lock..."
+    rm -f "$DISK_LOCK"
+  fi
   info "Starting Colima (this takes ~30s on first boot)..."
   colima start
   success "Colima started"
