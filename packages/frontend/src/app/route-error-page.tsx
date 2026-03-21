@@ -16,7 +16,7 @@ export function RouteErrorPage(): JSX.Element {
   return (
     <div className="min-h-screen bg-mainbg p-6">
       <div className="mx-auto max-w-xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-xs uppercase tracking-wide text-slate-500">Plural PLM</p>
+        <p className="text-xs uppercase tracking-wide text-slate-500">Tatva</p>
         <h1 className="mt-2 font-heading text-2xl text-slate-900">{title}</h1>
         <p className="mt-2 text-sm text-slate-600">{message}</p>
         <div className="mt-4 flex items-center gap-2">

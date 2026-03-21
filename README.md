@@ -1,8 +1,8 @@
-# Plural PLM
+# Tatva
 
 > **The source-available Product Lifecycle Management platform built for process industries.**
 
-Plural PLM gives food & beverage, CPG, chemical, paint, rubber, and polymer manufacturers a single system of record — from raw material to shelf. Formula management, stage-gate NPD, regulatory labeling, change control, and release management, all in one place.
+Tatva gives food & beverage, CPG, chemical, paint, rubber, and polymer manufacturers a single system of record — from raw material to shelf. Formula management, stage-gate NPD, regulatory labeling, change control, and release management, all in one place.
 
 <img width="1709" height="889" alt="image" src="https://github.com/user-attachments/assets/99787e80-3a0b-4053-a851-3fb93155d8c4" />
 
@@ -13,13 +13,13 @@ Plural PLM gives food & beverage, CPG, chemical, paint, rubber, and polymer manu
 
 ---
 
-## Why Plural PLM?
+## Why Tatva?
 
 Most PLM tools are built for discrete manufacturing — mechanical parts, assemblies, BOMs with counts. **Process industries are different.** Ingredients have percentages. Formulas have multiple versions in parallel development. Labels must declare allergens. Products go through gate reviews before launch.
 
-Plural PLM is purpose-built for process:
+Tatva is purpose-built for process:
 
-| Pain point | How Plural solves it |
+| Pain point | How Tatva solves it |
 |---|---|
 | Formula versions scattered in spreadsheets | Versioned formula builder with approval workflows and full audit trail |
 | Manual ingredient statement preparation | Auto-generates FSSAI/EU/FDA-compliant ingredient declarations from formula weights |
@@ -91,7 +91,7 @@ Out-of-the-box KPI dashboard, change aging, release readiness, NPD pipeline stat
 ---
 
 ### Regulatory Labeling
-Link a label template to a formula and click **Generate** — Plural recursively walks the entire formula tree, sorts ingredients by weight (FSSAI/EU 1169/FDA compliant), detects allergens from material attributes, and populates the full label: ingredient statement, allergen declaration, nutrition panel, shelf life, country of origin, and batch format.
+Link a label template to a formula and click **Generate** — Tatva recursively walks the entire formula tree, sorts ingredients by weight (FSSAI/EU 1169/FDA compliant), detects allergens from material attributes, and populates the full label: ingredient statement, allergen declaration, nutrition panel, shelf life, country of origin, and batch format.
 
 ![Labeling](docs/screenshots/10-labeling.png)
 

@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
-import { PluralLogo } from "@/components/plural-logo";
+import { TatvaLogo } from "@/components/tatva-logo";
 
 interface LoginResponse {
   token: string;
@@ -50,8 +50,8 @@ export function LoginPage(): JSX.Element {
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-mainbg px-4">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(27,79,114,0.12),transparent_35%),radial-gradient(circle_at_80%_10%,rgba(230,126,34,0.15),transparent_28%)]" />
       <form onSubmit={onSubmit} className="relative z-10 w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xl shadow-slate-900/5">
-        <PluralLogo />
-        <h1 className="mt-4 font-heading text-2xl text-primary">Welcome to Plural PLM</h1>
+        <TatvaLogo />
+        <h1 className="mt-4 font-heading text-2xl text-primary">Welcome to Tatva</h1>
         <p className="mt-1 text-sm text-slate-500">Sign in to manage your product data</p>
 
         <label className="mt-6 block text-sm font-medium text-slate-700">Email</label>

@@ -224,7 +224,7 @@ export function AdvancedSearchPage(): JSX.Element {
     <div className="space-y-6">
       <header className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Advanced Search</p>
-        <h1 className="mt-2 font-heading text-2xl font-semibold text-slate-900">Search across Plural PLM</h1>
+        <h1 className="mt-2 font-heading text-2xl font-semibold text-slate-900">Search across Tatva</h1>
         <p className="mt-2 text-sm text-slate-600">
           Search materials, formulations, FG structures, artworks, documents, and lifecycle records with one query. Results are scoped to
           your selected container.

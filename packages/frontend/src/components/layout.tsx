@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useContainerStore } from "@/store/container.store";
-import { PluralLogo } from "@/components/plural-logo";
+import { TatvaLogo } from "@/components/tatva-logo";
 import { useAuthStore } from "@/store/auth.store";
 import { EntityIcon } from "@/components/entity-icon";
 
@@ -361,7 +361,7 @@ export function AppLayout(): JSX.Element {
         <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-200/80 bg-white/95 px-6 backdrop-blur">
           <div className="flex flex-col gap-1">
             <Link to="/" className="inline-flex w-fit">
-              <PluralLogo />
+              <TatvaLogo />
             </Link>
             {breadcrumbs.length ? (
               <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-xs text-slate-500">

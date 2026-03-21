@@ -25,7 +25,7 @@ export function ConfigurationMailPage(): JSX.Element {
     secure: false,
     username: "",
     password: "",
-    fromName: "Plural PLM",
+    fromName: "Tatva",
     fromEmail: ""
   });
 

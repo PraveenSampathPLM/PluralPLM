@@ -421,7 +421,7 @@ export function HelpCenterPage(): JSX.Element {
     <div className="space-y-6">
       <header className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Help Center</p>
-        <h1 className="mt-2 font-heading text-2xl font-semibold text-slate-900">Plural PLM Guide</h1>
+        <h1 className="mt-2 font-heading text-2xl font-semibold text-slate-900">Tatva Guide</h1>
         <p className="mt-2 text-sm text-slate-600">
           This guide explains each screen, the required actions, and how data flows through the PLM lifecycle. Add
           screenshots to make this a complete training reference for new users.
@@ -469,7 +469,7 @@ export function HelpCenterPage(): JSX.Element {
           <section id="getting-started" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="font-heading text-lg font-semibold text-slate-900">Getting Started</h2>
             <p className="mt-2 text-sm text-slate-600">
-              Plural PLM is container-driven. Everything you create is scoped to the selected container and inherits
+              Tatva is container-driven. Everything you create is scoped to the selected container and inherits
               its industry context. Start every session by confirming the active container.
             </p>
             <div className="mt-4 grid gap-3 text-sm text-slate-700">
@@ -487,7 +487,7 @@ export function HelpCenterPage(): JSX.Element {
 
           <section id="data-model" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="font-heading text-lg font-semibold text-slate-900">Core Data Model Rules</h2>
-            <p className="mt-2 text-sm text-slate-600">Plural PLM enforces structure rules to keep process recipes valid.</p>
+            <p className="mt-2 text-sm text-slate-600">Tatva enforces structure rules to keep process recipes valid.</p>
             <ul className="mt-3 list-disc pl-5 text-sm text-slate-600">
               <li>FG BOM: parent FG, inputs must be Formula + Packaging.</li>
               <li>Formula recipe: parent FML, inputs must be RM or intermediate FML.</li>

@@ -942,7 +942,7 @@ router.get("/:id/msds-pdf", async (req, res, next) => {
       doc.font("Helvetica");
       doc.rect(40, 28, 28, 28).fill("#0F2027");
       doc.fillColor("#E67E22").font("Helvetica-Bold").fontSize(16).text("P", 48, 32);
-      doc.fillColor("#111").font("Helvetica-Bold").fontSize(16).text("Plural PLM", 78, 32);
+      doc.fillColor("#111").font("Helvetica-Bold").fontSize(16).text("Tatva", 78, 32);
       doc.font("Helvetica").fontSize(9).fillColor("#555").text("Safety Data Sheet (SDS)", 78, 50);
       doc.moveDown(2);
       doc.fillColor("#111").font("Helvetica-Bold").fontSize(12).text(`${formula.name}`);
@@ -1014,7 +1014,7 @@ router.get("/:id/msds-pdf", async (req, res, next) => {
     doc.text(`Product name: ${formula.name}`);
     doc.text("Recommended use: Polymer formulation / finished good recipe.");
     doc.text("Restrictions on use: Industrial use only.");
-    doc.text("Supplier: Plural PLM (Demo)");
+    doc.text("Supplier: Tatva (Demo)");
     doc.text("Emergency phone: Not available.");
     doc.moveDown();
 
@@ -1149,7 +1149,7 @@ router.get("/:id/msds-pdf", async (req, res, next) => {
     renderSpecLines(["REGULATORY"]);
 
     setSectionTitle("16. Other Information");
-    doc.text("Prepared by: Plural PLM (auto-generated).");
+    doc.text("Prepared by: Tatva (auto-generated).");
     doc.text("Revision date: " + new Date().toLocaleDateString());
     doc.moveDown();
 

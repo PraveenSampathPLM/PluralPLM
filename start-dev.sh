@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# Plural PLM — Dev start script
+# Tatva — Dev start script
 # Starts Colima → Docker (Postgres + Redis) → Backend → Frontend
 # Usage: ./start-dev.sh
 # ─────────────────────────────────────────────────────────────────────────────
@@ -88,7 +88,7 @@ success "Frontend starting at http://localhost:5173"
 # ── 5. Summary ───────────────────────────────────────────────────────────────
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${GREEN}  Plural PLM is running${NC}"
+echo -e "${GREEN}  Tatva is running${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "  App        → ${CYAN}http://localhost:5173${NC}"
 echo -e "  API        → ${CYAN}http://localhost:4000/api${NC}"

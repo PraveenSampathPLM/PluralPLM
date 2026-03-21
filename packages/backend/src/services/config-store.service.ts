@@ -333,7 +333,7 @@ const defaultConfig: AppConfigData = {
     secure: false,
     username: "",
     password: "",
-    fromName: "Plural PLM",
+    fromName: "Tatva",
     fromEmail: ""
   }
 };
