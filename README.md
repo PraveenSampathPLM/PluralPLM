@@ -32,29 +32,82 @@ Plural PLM is purpose-built for process:
 
 ## Key Modules
 
+### Control Tower Dashboard
+Real-time overview of your entire PLM portfolio — open changes, active formulas, release status, NPD pipeline, and trend charts across all modules in one view.
+
+![Dashboard](docs/screenshots/01-dashboard.png)
+
+---
+
+### Materials & Item Management
+Manage all raw materials, packaging, formulations, and finished goods in one master item registry. Full lifecycle tracking from DRAFT to RELEASED with revision history and export.
+
+![Materials](docs/screenshots/02-items.png)
+
+---
+
 ### Formulation Management
-Build multi-level formulas with ingredients, quantities, and processing instructions. Every change is versioned. Compare revisions side-by-side. Digital thread links the formula to its raw materials, specifications, documents, changes, releases, and NPD project — all in one view.
+Build multi-level formulas with ingredients, quantities, and weight percentages. Every change is versioned. Linked BOMs, specs, and processing instructions all in one place.
+
+![Formulas](docs/screenshots/03-formulas.png)
+
+![Formula Detail](docs/screenshots/04-formula-detail.png)
+
+---
+
+### Digital Thread — Product Traceability
+Hub-and-spoke digital thread connects the formula to ingredients, output FG item, documents, specifications, changes, releases, and NPD project. See completeness scores and action items at a glance.
+
+![Digital Thread](docs/screenshots/05-digital-thread.png)
+
+---
 
 ### NPD Stage-Gate
-Run structured new product development with configurable gate criteria. Must-meet and should-meet criteria evaluated at each gate review. Gate 5 (Launch GO) automatically triggers a release request. FG items and formulas are created as deliverables within the project, not manual fields.
+Kanban-style pipeline across Discovery → Feasibility → Development → Validation → Launch. Configurable gate criteria (must-meet & should-meet) with formal gate review sign-offs. Gate 5 GO automatically triggers a release request.
 
-### Regulatory Labeling
-Link a label template to a formula and click **Generate** — Plural recursively walks the entire formula tree, sorts ingredients by weight (compliant with FSSAI, EU 1169, FDA), detects allergens from material attributes, and populates the full label: ingredient statement, allergen declaration, nutrition panel, shelf life, country of origin, batch format. Edit and save as a numbered label document.
+![NPD Stage-Gate](docs/screenshots/06-npd.png)
+
+---
 
 ### Change Control
-Raise change requests, attach affected materials/formulas/documents, route through workflow sign-off, and link to downstream releases. Full audit trail on every object.
+Raise change requests (ECR/ECN), assign priority, attach affected objects, route through multi-role sign-off, and link to downstream releases. Full audit trail on every object.
+
+![Change Management](docs/screenshots/07-changes.png)
+
+---
 
 ### Release Management
-Package a set of BOMs, formulas, and documents into a release request. Track readiness by linked object. Release reports show percentage readiness per release across the portfolio.
+Package approved changes, BOMs, and documents into numbered release requests. Track release readiness across the portfolio with per-release progress reporting.
 
-### Compliance & Specifications
-Attach parameter-based specification sheets (physico-chemical, nutritional, regulatory) to materials and formulas. Compliance module checks formula specs against target ranges.
+![Release Management](docs/screenshots/08-releases.png)
+
+---
 
 ### Enterprise Reporting
-Out-of-the-box reports: KPI dashboard, change aging, release readiness, NPD pipeline status, FG items missing formulas, items by lifecycle status. One-click CSV export.
+Out-of-the-box KPI dashboard, change aging, release readiness, NPD pipeline status, FG items missing formulas, and items-by-status bar chart. One-click CSV export for every report.
 
-### Digital Twin of the Product with Traceability
-<img width="1446" height="606" alt="image" src="https://github.com/user-attachments/assets/16cdbf6f-b525-4564-9861-d7f1ed9915c4" />
+![Reports](docs/screenshots/09-reports.png)
+
+---
+
+### Regulatory Labeling
+Link a label template to a formula and click **Generate** — Plural recursively walks the entire formula tree, sorts ingredients by weight (FSSAI/EU 1169/FDA compliant), detects allergens from material attributes, and populates the full label: ingredient statement, allergen declaration, nutrition panel, shelf life, country of origin, and batch format.
+
+![Labeling](docs/screenshots/10-labeling.png)
+
+---
+
+### Compliance & Specifications
+Configure parameter-based specification templates per industry (physico-chemical, nutritional, regulatory). Attach spec sheets to any material or formula and validate against target ranges.
+
+![Specifications](docs/screenshots/11-specifications.png)
+
+---
+
+### Finished Good Structures
+Link finished good items to their formula and packaging components. View and manage the complete FG BOM — formula version, revision, status, and packaging count all in one place.
+
+![FG Structures](docs/screenshots/12-fg-structures.png)
 
 ---
 
