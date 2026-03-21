@@ -268,7 +268,7 @@ export function AppLayout(): JSX.Element {
       return [];
     }
     const segments = location.pathname.split("/").filter(Boolean);
-    const crumbs: Array<{ to: string; label: string }> = [{ to: "/", label: "Home" }];
+    const crumbs: Array<{ to: string; label: string }> = [];
     let acc = "";
     for (let i = 0; i < segments.length; i += 1) {
       const segment = segments[i] ?? "";
