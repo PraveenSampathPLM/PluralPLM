@@ -388,46 +388,47 @@
       color: rgba(255,255,255,0.5);
     }
 
-    /* ── DEPLOY ─── */
-    #deploy { padding: 120px 0; }
-    .deploy-steps { display: grid; grid-template-columns: repeat(3,1fr); gap: 24px; margin-bottom: 48px; }
-    .deploy-step {
-      background: var(--bg-alt);
+    /* ── PRICING ─── */
+    #pricing { padding: 120px 0; background: var(--bg-alt); }
+    .pricing-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 24px; margin-bottom: 56px; }
+    .price-card {
+      background: var(--white);
       border: 1px solid var(--border2);
-      border-radius: var(--r); padding: 36px 28px;
+      border-radius: 18px; padding: 40px 32px;
+      display: flex; flex-direction: column; gap: 0;
+      position: relative;
     }
-    .step-num {
-      width: 32px; height: 32px; border-radius: 50%;
+    .price-card.featured {
+      border: 2px solid var(--accent);
+      box-shadow: 0 20px 60px rgba(232,89,12,0.12);
+    }
+    .price-badge {
+      position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
       background: var(--accent); color: #fff;
-      font-size: 14px; font-weight: 700;
-      display: flex; align-items: center; justify-content: center;
-      margin-bottom: 18px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 4px 16px; border-radius: 20px; white-space: nowrap;
     }
-    .step-h { font-size: 16px; font-weight: 600; margin-bottom: 8px; color: var(--text); }
-    .step-p { font-size: 14px; color: var(--muted); line-height: 1.6; }
-    .code-block {
-      background: #1D1D1F;
-      border-radius: var(--r); overflow: hidden;
+    .price-tier { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin-bottom: 20px; }
+    .price-amount { font-size: 48px; font-weight: 800; letter-spacing: -0.04em; color: var(--text); line-height: 1; }
+    .price-amount sup { font-size: 22px; font-weight: 700; vertical-align: super; }
+    .price-period { font-size: 13px; color: var(--muted); margin-top: 6px; margin-bottom: 8px; }
+    .price-note { font-size: 12px; color: var(--muted); margin-bottom: 28px; padding-bottom: 28px; border-bottom: 1px solid var(--border2); }
+    .price-features { list-style: none; display: flex; flex-direction: column; gap: 12px; flex: 1; margin-bottom: 32px; }
+    .price-features li { font-size: 14px; color: var(--text2); display: flex; align-items: flex-start; gap: 10px; line-height: 1.4; }
+    .price-features li::before { content: '✓'; color: var(--accent); font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+    .price-features li.muted::before { content: '✓'; color: #bbb; }
+    .price-features li.muted { color: var(--muted); }
+    .price-cta {
+      display: block; text-align: center; text-decoration: none;
+      padding: 14px; border-radius: 980px;
+      font-size: 15px; font-weight: 600; transition: all 0.2s;
     }
-    .code-top {
-      background: #2C2C2E;
-      padding: 12px 20px;
-      display: flex; align-items: center; gap: 8px;
-      border-bottom: 1px solid rgba(255,255,255,0.06);
-    }
-    .code-top .cd { width: 10px; height: 10px; border-radius: 50%; }
-    .code-top span { font-size: 13px; color: #666; margin-left: 4px; }
-    .code-body { padding: 28px 32px; }
-    .code-body pre {
-      font-family: 'SF Mono', 'Fira Code', monospace;
-      font-size: 14px; line-height: 2; color: #aaa;
-      overflow-x: auto;
-    }
-    .c-comment { color: #555; }
-    .c-cmd { color: #64D2FF; }
-    .c-flag { color: #FF9F0A; }
-    .c-str { color: #FF6961; }
-    .c-green { color: #30D158; }
+    .price-cta-primary { background: var(--accent); color: #fff; }
+    .price-cta-primary:hover { background: var(--accent-h); }
+    .price-cta-outline { border: 1.5px solid var(--border); color: var(--text); }
+    .price-cta-outline:hover { border-color: var(--text); background: var(--bg-alt); }
+    .pricing-disclaimer { text-align: center; font-size: 14px; color: var(--muted); max-width: 640px; margin: 0 auto; line-height: 1.7; }
+    .pricing-disclaimer strong { color: var(--text2); }
 
     /* ── CTA ─── */
     #cta {
@@ -467,7 +468,7 @@
       .stats-grid { grid-template-columns: repeat(2,1fr); }
       .module-grid { grid-template-columns: repeat(2,1fr); }
       .footer-grid { grid-template-columns: 1fr 1fr; }
-      .deploy-steps { grid-template-columns: 1fr; }
+      .pricing-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 640px) {
       .nav-links { display: none; }
@@ -501,7 +502,7 @@
       <li><a href="#erp">ERP</a></li>
       <li><a href="#about">About</a></li>
     </ul>
-    <a href="#deploy" class="btn-nav">Get Started</a>
+    <a href="#pricing" class="btn-nav">Get Started</a>
   </div>
 </nav>
 
@@ -509,15 +510,15 @@
 <section id="hero" style="background:var(--bg-alt)">
   <div class="container">
     <div class="hero-eyebrow">
-      <span></span> Open Source · Self-Hosted · Process Industries
+      <span></span> Made in India · Enterprise PLM · Process Industries
     </div>
     <h1 class="hero-title reveal">The PLM platform process industries<br>actually deserve.</h1>
     <p class="hero-sub reveal" style="transition-delay:0.08s">
-      Formula management, stage-gate NPD, regulatory labeling, change control, and ERP integration — unified in a single self-hosted platform.
+      Formula management, stage-gate NPD, regulatory labeling, change control, and ERP integration — unified in one enterprise platform built for process manufacturers.
     </p>
     <div class="hero-actions reveal" style="transition-delay:0.16s">
-      <a href="#deploy" class="btn-primary">
-        Deploy in 10 minutes
+      <a href="#pricing" class="btn-primary">
+        See Pricing
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
       </a>
       <a href="https://github.com/PraveenSampathPLM/TatvaPLM" target="_blank" class="btn-secondary">
@@ -582,8 +583,8 @@
         <div class="stat-label">To production</div>
       </div>
       <div class="stat-cell reveal" style="transition-delay:.24s">
-        <div class="stat-num">$0</div>
-        <div class="stat-label">SaaS fees. Ever.</div>
+        <div class="stat-num">Free</div>
+        <div class="stat-label">Implementation included</div>
       </div>
     </div>
   </div>
@@ -904,7 +905,7 @@
           <br><br>
           India is the world's factory — home to thousands of food, chemical, polymer, and CPG manufacturers who deserve world-class software. Not adapted tools from discrete manufacturing. Not SaaS with endless fees. Tatva was built here, for manufacturers everywhere.
           <br><br>
-          Open-source. Self-hosted. No vendor lock-in. Yours forever.
+          Built for process manufacturers. Priced per seat. No proprietary database fees — ever.
         </p>
         <a href="https://tatva.com" class="about-link">
           Visit tatva.com
@@ -936,8 +937,8 @@
             <div class="about-stat-label">Regulatory standards<br>(FSSAI · EU 1169 · FDA)</div>
           </div>
           <div class="about-stat">
-            <div class="about-stat-num" style="color:#30D158">$0</div>
-            <div class="about-stat-label">Vendor fees. Ever.</div>
+            <div class="about-stat-num" style="color:#30D158">Free</div>
+            <div class="about-stat-label">Implementation &amp; onboarding</div>
           </div>
         </div>
       </div>
@@ -945,54 +946,75 @@
   </div>
 </section>
 
-<!-- ── DEPLOY ── -->
-<section id="deploy">
+<!-- ── PRICING ── -->
+<section id="pricing">
   <div class="container">
     <div class="section-head reveal">
-      <span class="section-eyebrow">Self-Hosted</span>
-      <h2 class="section-h2">Production in 3 commands.</h2>
-      <p class="section-p">No cloud. No SaaS fees. No vendor relationship. Your server, your data, your platform — forever.</p>
+      <span class="section-eyebrow">Pricing</span>
+      <h2 class="section-h2">Pay for people,<br>not features.</h2>
+      <p class="section-p">One flat seat price. All 12 modules included. No proprietary database fees. Free implementation on every plan.</p>
     </div>
-    <div class="deploy-steps">
-      <div class="deploy-step reveal">
-        <div class="step-num">1</div>
-        <div class="step-h">Clone &amp; Configure</div>
-        <div class="step-p">Clone the repo, copy the production env file, and set your PostgreSQL password and JWT secret. That's it.</div>
+    <div class="pricing-grid">
+
+      <!-- Starter -->
+      <div class="price-card reveal">
+        <div class="price-tier">Starter</div>
+        <div class="price-amount"><sup>₹</sup>999</div>
+        <div class="price-period">per seat / month</div>
+        <div class="price-note">Up to 10 seats · Billed annually</div>
+        <ul class="price-features">
+          <li>All 12 platform modules</li>
+          <li>Formula &amp; NPD management</li>
+          <li>Regulatory labeling (FSSAI / EU / FDA)</li>
+          <li>Change &amp; release workflows</li>
+          <li>ERP integration connectors</li>
+          <li>Free implementation support</li>
+          <li class="muted">Community support</li>
+        </ul>
+        <a href="mailto:hello@tatva.com" class="price-cta price-cta-outline">Get Started</a>
       </div>
-      <div class="deploy-step reveal" style="transition-delay:.08s">
-        <div class="step-num">2</div>
-        <div class="step-h">Launch with Docker</div>
-        <div class="step-p">One command starts the full stack — Nginx, React SPA, Express API, PostgreSQL, and Redis.</div>
+
+      <!-- Professional -->
+      <div class="price-card featured reveal" style="transition-delay:.08s">
+        <div class="price-badge">Most Popular</div>
+        <div class="price-tier">Professional</div>
+        <div class="price-amount"><sup>₹</sup>1,999</div>
+        <div class="price-period">per seat / month</div>
+        <div class="price-note">11–100 seats · Volume discounts available</div>
+        <ul class="price-features">
+          <li>Everything in Starter</li>
+          <li>Dedicated implementation engineer</li>
+          <li>Priority ERP connector setup</li>
+          <li>Custom workflows &amp; approval chains</li>
+          <li>Multi-container (multi-plant) support</li>
+          <li>Email &amp; phone support</li>
+          <li>Quarterly business reviews</li>
+        </ul>
+        <a href="mailto:hello@tatva.com" class="price-cta price-cta-primary">Request a Demo</a>
       </div>
-      <div class="deploy-step reveal" style="transition-delay:.16s">
-        <div class="step-num">3</div>
-        <div class="step-h">Load Demo Data</div>
-        <div class="step-p">Seed realistic demo data to explore formulas, NPD projects, changes, and labels in minutes.</div>
+
+      <!-- Enterprise -->
+      <div class="price-card reveal" style="transition-delay:.16s">
+        <div class="price-tier">Enterprise</div>
+        <div class="price-amount">Custom</div>
+        <div class="price-period">&nbsp;</div>
+        <div class="price-note">100+ seats · On-premise or cloud</div>
+        <ul class="price-features">
+          <li>Everything in Professional</li>
+          <li>White-label &amp; custom branding</li>
+          <li>On-site implementation &amp; training</li>
+          <li>Dedicated SLA guarantee</li>
+          <li>SSO / LDAP / Active Directory</li>
+          <li>Custom regulatory modules</li>
+          <li>24 × 7 support &amp; escalation</li>
+        </ul>
+        <a href="mailto:hello@tatva.com" class="price-cta price-cta-outline">Contact Sales</a>
       </div>
+
     </div>
-    <div class="code-block reveal">
-      <div class="code-top">
-        <div class="cd" style="background:#FF5F57"></div>
-        <div class="cd" style="background:#FEBC2E"></div>
-        <div class="cd" style="background:#28C840"></div>
-        <span>Terminal</span>
-      </div>
-      <div class="code-body">
-        <pre><span class="c-comment"># 1. Clone</span>
-<span class="c-cmd">git clone</span> https://github.com/PraveenSampathPLM/TatvaPLM.git <span class="c-cmd">&amp;&amp; cd</span> TatvaPLM
-
-<span class="c-comment"># 2. Configure — set POSTGRES_PASSWORD and JWT_SECRET</span>
-<span class="c-cmd">cp</span> .env.production.example .env.production
-
-<span class="c-comment"># 3. Launch the full stack</span>
-<span class="c-cmd">docker compose</span> <span class="c-flag">-f</span> docker-compose.prod.yml <span class="c-flag">--env-file</span> .env.production <span class="c-cmd">up -d --build</span>
-
-<span class="c-comment"># Load demo data (optional)</span>
-<span class="c-cmd">docker exec</span> plm-backend sh <span class="c-flag">-c</span> <span class="c-str">"npm run seed:demo -w @plm/backend"</span>
-
-<span class="c-green"># ✓ Open http://localhost — done.</span></pre>
-      </div>
-    </div>
+    <p class="pricing-disclaimer reveal">
+      <strong>No database license fees.</strong> Tatva runs on PostgreSQL — the world's most trusted open database standard. Your data lives on your infrastructure, fully portable, fully yours. No per-module unlocks. No surprise annual true-ups. <strong>Free implementation is included on every plan.</strong>
+    </p>
   </div>
 </section>
 
@@ -1000,13 +1022,13 @@
 <section id="cta">
   <div class="container">
     <h2 class="cta-h reveal">The PLM your team<br>actually wants to use.</h2>
-    <p class="cta-p reveal" style="transition-delay:.08s">Free for personal use, R&amp;D, and academic research. Deploy in under 10 minutes. No credit card required.</p>
+    <p class="cta-p reveal" style="transition-delay:.08s">Transparent seat-based pricing. All modules included. Free implementation on every plan. No credit card required to start a conversation.</p>
     <div class="cta-actions reveal" style="transition-delay:.16s">
-      <a href="https://github.com/PraveenSampathPLM/TatvaPLM" target="_blank" class="btn-primary">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.745 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
-        View on GitHub
+      <a href="mailto:hello@tatva.com" class="btn-primary">
+        Request a Demo
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
       </a>
-      <a href="#deploy" class="btn-secondary">Deploy Tatva →</a>
+      <a href="#pricing" class="btn-secondary">See Pricing →</a>
     </div>
   </div>
 </section>
@@ -1030,7 +1052,7 @@
             <line x1="83" y1="57" x2="310" y2="57" stroke="rgba(255,255,255,0.1)" stroke-width="1" stroke-linecap="round"/>
           </svg>
         </div>
-        <p>The Enterprise PLM platform built for process industries. Formula management, stage-gate NPD, regulatory labeling, and ERP integration — self-hosted, forever.</p>
+        <p>The Enterprise PLM platform built for process industries. Formula management, stage-gate NPD, regulatory labeling, and ERP integration — on your infrastructure, on your terms.</p>
       </div>
       <div class="footer-col">
         <h4>Product</h4>
@@ -1039,7 +1061,7 @@
           <li><a href="#formula">Formula Builder</a></li>
           <li><a href="#digital-thread">Digital Thread</a></li>
           <li><a href="#erp">ERP Integration</a></li>
-          <li><a href="#deploy">Self-Hosting</a></li>
+          <li><a href="#pricing">Pricing</a></li>
         </ul>
       </div>
       <div class="footer-col">
@@ -1057,14 +1079,14 @@
         <ul>
           <li><a href="https://github.com/PraveenSampathPLM/TatvaPLM" target="_blank">GitHub</a></li>
           <li><a href="https://github.com/PraveenSampathPLM/TatvaPLM/blob/main/README.md" target="_blank">Documentation</a></li>
-          <li><a href="https://github.com/PraveenSampathPLM/TatvaPLM/blob/main/LICENSE" target="_blank">License</a></li>
+          <li><a href="#pricing">Pricing</a></li>
           <li><a href="#about">About Tatva</a></li>
           <li><a href="https://tatva.com">tatva.com</a></li>
         </ul>
       </div>
     </div>
     <div class="footer-bottom">
-      <div>© 2025 Tatva &nbsp;·&nbsp; <a href="https://github.com/PraveenSampathPLM/TatvaPLM" target="_blank">Open Source ↗</a> &nbsp;·&nbsp; Non-commercial license</div>
+      <div>© 2025 Tatva &nbsp;·&nbsp; <a href="https://github.com/PraveenSampathPLM/TatvaPLM" target="_blank">GitHub ↗</a> &nbsp;·&nbsp; Made in India 🇮🇳</div>
       <div>Built with ❤️ in India 🇮🇳</div>
     </div>
   </div>
