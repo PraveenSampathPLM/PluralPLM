@@ -111,6 +111,30 @@ Link finished good items to their formula and packaging components. View and man
 
 ---
 
+### ERP Integration Framework
+
+Connect Tatva to your ERP system to synchronise items, formulas, and BOMs in real time. Tatva ships with native adapters for **SAP S/4HANA**, **Oracle EBS**, **Oracle Fusion Cloud**, **Microsoft Dynamics 365**, **NetSuite**, and any **Generic REST API** — no middleware required.
+
+**Integration Hub** — configure and manage all ERP connections from one place. Each card shows the ERP type, sync status, last sync timestamp, and mapping/log counts.
+
+![ERP Integration Hub](docs/screenshots/erp-integrations-hub.png)
+
+**3-step setup wizard** — choose your ERP system, configure the base URL and authentication (API Key, Bearer Token, Basic Auth, or OAuth2), and select which entities to sync (Items, Formulas, FG Structures, Changes, Releases).
+
+**Integration detail — Overview** — trigger Push or Pull syncs per entity type, view connection health, and see when the integration last ran.
+
+![ERP Integration Overview](docs/screenshots/erp-integration-overview.png)
+
+**Field Mappings** — define exactly how PLM fields map to ERP fields with direction control (PLM→ERP, ERP→PLM, or bidirectional) and optional transform rules. Default mappings are seeded automatically for each ERP type (e.g. `itemCode → MATNR` for SAP).
+
+![ERP Field Mappings](docs/screenshots/erp-integration-mappings.png)
+
+**Sync History** — every sync run is logged with status (SUCCESS / PARTIAL / FAILED), record counts, duration, and expandable error details. Logs refresh live every 5 seconds during an active sync.
+
+![ERP Sync History](docs/screenshots/erp-integration-logs.png)
+
+---
+
 ## Architecture
 
 ```
