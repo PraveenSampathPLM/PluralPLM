@@ -16,3 +16,4 @@ export { default as documentsRoutes } from "./documents.routes.js";
 export { default as labelsRoutes } from "./labels.routes.js";
 export { default as artworksRoutes } from "./artworks.routes.js";
 export { default as npdRoutes } from "./npd.routes.js";
+export { default as integrationsRoutes } from "./integrations.routes.js";

@@ -41,6 +41,8 @@ import { ArtworkDetailPage } from "@/features/artworks/detail-page";
 import { ReportsPage } from "@/features/reports/page";
 import { NpdPage } from "@/features/npd/page";
 import { NpdDetailPage } from "@/features/npd/detail-page";
+import { IntegrationsPage } from "@/features/integrations/page";
+import { IntegrationDetailPage } from "@/features/integrations/detail";
 
 export const router = createBrowserRouter([
   {
@@ -97,7 +99,9 @@ export const router = createBrowserRouter([
       { path: "configuration/mail", element: <ConfigurationMailPage /> },
       { path: "configuration/server-stats", element: <ConfigurationServerStatsPage /> },
       { path: "configuration/workflows", element: <ConfigurationWorkflowsPage /> },
-      { path: "help", element: <HelpCenterPage /> }
+      { path: "help", element: <HelpCenterPage /> },
+      { path: "integrations", element: <IntegrationsPage /> },
+      { path: "integrations/:id", element: <IntegrationDetailPage /> }
     ]
   }
 ]);

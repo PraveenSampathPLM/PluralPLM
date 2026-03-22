@@ -132,6 +132,17 @@ function IconFolder({ className }: { className?: string }): JSX.Element {
   );
 }
 
+function IconPlug({ className }: { className?: string }): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={className}>
+      <path d="M12 22v-5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      <path d="M9 8V2" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      <path d="M15 8V2" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      <path d="M18 8H6a1 1 0 0 0-1 1v4a7 7 0 0 0 7 7 7 7 0 0 0 7-7V9a1 1 0 0 0-1-1Z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 const navGroups: NavGroup[] = [
   {
     label: "",
@@ -179,6 +190,7 @@ const navGroups: NavGroup[] = [
   {
     label: "Governance",
     items: [
+      { to: "/integrations", label: "ERP Integrations", icon: IconPlug },
       { to: "/containers", label: "Containers", icon: IconFolder },
       { to: "/configuration", label: "Configuration", icon: IconSettings }
     ]
@@ -200,6 +212,7 @@ const breadcrumbLabelMap: Record<string, string> = {
   reports: "Reports",
   specifications: "Specifications",
   containers: "Containers",
+  integrations: "ERP Integrations",
   configuration: "Configuration",
   numbering: "Numbering",
   revisions: "Revisions",

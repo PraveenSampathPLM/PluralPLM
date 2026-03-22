@@ -259,9 +259,10 @@ model ProductContainer {
   documents      Document[]
   artworks       Artwork[]
   tasks          Task[]
-  npdProjects    NpdProject[]
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
+  npdProjects      NpdProject[]
+  erpIntegrations  ErpIntegration[]
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 }
 
 model ContainerRole {
@@ -738,4 +739,56 @@ model StageGateTemplate {
   updatedAt          DateTime @updatedAt
 
   @@unique([industry, stage])
+}
+
+// ─── ERP Integration Framework ───────────────────────────────────────────────
+
+model ErpIntegration {
+  id           String            @id @default(cuid())
+  name         String
+  description  String?
+  erpType      String            // SAP_S4, ORACLE_EBS, ORACLE_FUSION, DYNAMICS_365, NETSUITE, REST
+  status       String            @default("INACTIVE") // ACTIVE, INACTIVE, ERROR
+  baseUrl      String
+  authType     String            // API_KEY, OAUTH2, BASIC, BEARER
+  credentials  Json              @default("{}")
+  syncEntities String[]          // ITEM, FORMULA, FG_STRUCTURE, CHANGE, RELEASE
+  syncSchedule String?           // cron expression e.g. "0 2 * * *"
+  lastSyncAt   DateTime?
+  containerId  String?
+  container    ProductContainer? @relation(fields: [containerId], references: [id])
+  mappings     ErpFieldMapping[]
+  syncLogs     ErpSyncLog[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+}
+
+model ErpFieldMapping {
+  id            String         @id @default(cuid())
+  integrationId String
+  integration   ErpIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  entityType    String         // ITEM, FORMULA, FG_STRUCTURE
+  direction     String         // PLM_TO_ERP, ERP_TO_PLM, BIDIRECTIONAL
+  plmField      String
+  erpField      String
+  transformRule String?
+  required      Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+}
+
+model ErpSyncLog {
+  id            String         @id @default(cuid())
+  integrationId String
+  integration   ErpIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  direction     String         // PUSH, PULL
+  entityType    String
+  status        String         // RUNNING, SUCCESS, PARTIAL, FAILED
+  recordsTotal  Int            @default(0)
+  recordsSynced Int            @default(0)
+  recordsFailed Int            @default(0)
+  errorMessage  String?
+  details       Json?
+  triggeredBy   String?
+  startedAt     DateTime       @default(now())
+  completedAt   DateTime?
 }

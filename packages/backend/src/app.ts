@@ -18,7 +18,8 @@ import {
   documentsRoutes,
   labelsRoutes,
   artworksRoutes,
-  npdRoutes
+  npdRoutes,
+  integrationsRoutes
 } from "./routes/index.js";
 import { authenticate } from "./middleware/auth.middleware.js";
 import { errorMiddleware } from "./middleware/error.middleware.js";
@@ -51,6 +52,7 @@ export function createApp() {
   app.use("/api/labels", authenticate, labelsRoutes);
   app.use("/api/artworks", authenticate, artworksRoutes);
   app.use("/api/npd", authenticate, npdRoutes);
+  app.use("/api/integrations", authenticate, integrationsRoutes);
 
   app.use(errorMiddleware);
 

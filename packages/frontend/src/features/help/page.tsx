@@ -3,7 +3,7 @@ import {
   type LucideIcon,
   Home, Package, FlaskConical, Layers, Rocket, GitCompare,
   PackageCheck, Tag, Palette, FileText, SlidersHorizontal,
-  CheckSquare, Settings, BookOpen,
+  CheckSquare, Settings, BookOpen, BarChart3,
   Lightbulb, AlertTriangle, Info, Play, Search,
   HelpCircle, ChevronDown
 } from "lucide-react";

@@ -15,7 +15,6 @@ export function useAppTour(autoStart = false) {
       overlayOpacity: 0.75,
       popoverClass: "tatva-tour-popover",
       doneBtnText: "Done ✓",
-      closeBtnText: "Skip tour",
       nextBtnText: "Next →",
       prevBtnText: "← Back",
       steps: APP_TOUR_STEPS,
