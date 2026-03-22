@@ -1,6 +1,6 @@
 # Tatva
 
-> **The source-available Product Lifecycle Management platform built for process industries.**
+> **The Enterprise Product Lifecycle Management platform built for process industries.**
 
 Tatva gives food & beverage, CPG, chemical, paint, rubber, and polymer manufacturers a single system of record — from raw material to shelf. Formula management, stage-gate NPD, regulatory labeling, change control, and release management, all in one place.
 
