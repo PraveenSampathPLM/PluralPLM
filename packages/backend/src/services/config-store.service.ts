@@ -325,6 +325,186 @@ const defaultConfig: AppConfigData = {
           { key: "Shelf Life", defaultUom: "days", valueKind: "RANGE" }
         ]
       }
+    ],
+    CPG: [
+      {
+        specType: "PHYSICAL",
+        label: "Physical Properties",
+        attributes: [
+          { key: "Appearance", defaultUom: "", defaultTestMethod: "Visual", valueKind: "TEXT" },
+          { key: "Color (Gardner)", defaultUom: "Gardner", defaultTestMethod: "ASTM D1544", valueKind: "RANGE" },
+          { key: "Specific Gravity", defaultUom: "g/cm3", defaultTestMethod: "ASTM D1298", valueKind: "RANGE" },
+          { key: "Viscosity", defaultUom: "cP", defaultTestMethod: "Brookfield", valueKind: "RANGE" },
+          { key: "pH (1% Solution)", defaultUom: "", defaultTestMethod: "ASTM E70", valueKind: "RANGE" },
+          { key: "Moisture", defaultUom: "%", defaultTestMethod: "Karl Fischer", valueKind: "RANGE" }
+        ]
+      },
+      {
+        specType: "CHEMICAL",
+        label: "Chemical Properties",
+        attributes: [
+          { key: "Active Content", defaultUom: "%", defaultTestMethod: "Titration", valueKind: "RANGE" },
+          { key: "Purity", defaultUom: "%", defaultTestMethod: "GC", valueKind: "RANGE" },
+          { key: "Unsaponifiables", defaultUom: "%", defaultTestMethod: "ISO 3596", valueKind: "RANGE" },
+          { key: "Hydroxyl Value", defaultUom: "mg KOH/g", defaultTestMethod: "ISO 4629", valueKind: "RANGE" }
+        ]
+      },
+      {
+        specType: "MICROBIO",
+        label: "Microbiological",
+        attributes: [
+          { key: "Total Aerobic Count", defaultUom: "cfu/g", defaultTestMethod: "ISO 21149", valueKind: "RANGE" },
+          { key: "Yeast & Mold", defaultUom: "cfu/g", defaultTestMethod: "ISO 16212", valueKind: "RANGE" },
+          { key: "Staphylococcus aureus", defaultUom: "cfu/g", defaultTestMethod: "ISO 22718", valueKind: "TEXT" }
+        ]
+      },
+      {
+        specType: "SAFETY",
+        label: "Safety & Toxicology",
+        attributes: [
+          { key: "Flash Point", defaultUom: "degC", defaultTestMethod: "ASTM D93", valueKind: "RANGE" },
+          { key: "GHS Classification", defaultUom: "", defaultTestMethod: "SDS Review", valueKind: "TEXT" },
+          { key: "Dermatologically Tested", defaultUom: "", defaultTestMethod: "Patch Test", valueKind: "TEXT" }
+        ]
+      },
+      {
+        specType: "REGULATORY",
+        label: "Regulatory Compliance",
+        attributes: [
+          { key: "EU Cosmetics Reg 1223/2009", defaultUom: "", defaultTestMethod: "Regulatory Review", valueKind: "TEXT" },
+          { key: "INCI Name", defaultUom: "", defaultTestMethod: "PCPC Database", valueKind: "TEXT" },
+          { key: "COSMOS / ECOCERT Status", defaultUom: "", defaultTestMethod: "Certification Review", valueKind: "TEXT" }
+        ]
+      },
+      {
+        specType: "PACKAGING",
+        label: "Packaging",
+        attributes: [
+          { key: "Container Type", defaultUom: "", defaultTestMethod: "Visual", valueKind: "TEXT" },
+          { key: "Net Weight", defaultUom: "kg", defaultTestMethod: "Scale", valueKind: "RANGE" },
+          { key: "Shelf Life", defaultUom: "months", defaultTestMethod: "Stability Study", valueKind: "RANGE" }
+        ]
+      }
+    ],
+    TYRE: [
+      {
+        specType: "PHYSICAL",
+        label: "Physical Properties",
+        attributes: [
+          { key: "Mooney Viscosity (ML 1+4 at 100°C)", defaultUom: "MU", defaultTestMethod: "ASTM D1646", valueKind: "RANGE" },
+          { key: "Specific Gravity", defaultUom: "g/cm3", defaultTestMethod: "ASTM D792", valueKind: "RANGE" },
+          { key: "Ash Content", defaultUom: "%", defaultTestMethod: "ASTM D1416", valueKind: "RANGE" },
+          { key: "Volatile Content", defaultUom: "%", defaultTestMethod: "ASTM D1416", valueKind: "RANGE" },
+          { key: "Tensile Strength (cured)", defaultUom: "MPa", defaultTestMethod: "ISO 37", valueKind: "RANGE" },
+          { key: "Elongation at Break (cured)", defaultUom: "%", defaultTestMethod: "ISO 37", valueKind: "RANGE" }
+        ]
+      },
+      {
+        specType: "CHEMICAL",
+        label: "Chemical Properties",
+        attributes: [
+          { key: "Polymer Content", defaultUom: "%", defaultTestMethod: "Pyrolysis GC", valueKind: "RANGE" },
+          { key: "Sulfur Content", defaultUom: "%", defaultTestMethod: "ASTM D4578", valueKind: "RANGE" },
+          { key: "Chlorine Content", defaultUom: "ppm", defaultTestMethod: "AOX", valueKind: "RANGE" },
+          { key: "pH (Water Extract)", defaultUom: "", defaultTestMethod: "ASTM E70", valueKind: "RANGE" }
+        ]
+      },
+      {
+        specType: "PERFORMANCE",
+        label: "Cure & Performance",
+        attributes: [
+          { key: "Mooney Scorch (t5 at 125°C)", defaultUom: "min", defaultTestMethod: "ASTM D1646", valueKind: "RANGE" },
+          { key: "Cure Rate Index (CRI)", defaultUom: "", defaultTestMethod: "MDR", valueKind: "RANGE" },
+          { key: "Minimum Torque (ML)", defaultUom: "dNm", defaultTestMethod: "ASTM D5289", valueKind: "RANGE" },
+          { key: "Maximum Torque (MH)", defaultUom: "dNm", defaultTestMethod: "ASTM D5289", valueKind: "RANGE" }
+        ]
+      },
+      {
+        specType: "SAFETY",
+        label: "Safety & Handling",
+        attributes: [
+          { key: "Flash Point", defaultUom: "degC", defaultTestMethod: "ASTM D93", valueKind: "RANGE" },
+          { key: "GHS Classification", defaultUom: "", defaultTestMethod: "SDS Review", valueKind: "TEXT" }
+        ]
+      },
+      {
+        specType: "REGULATORY",
+        label: "Regulatory Compliance",
+        attributes: [
+          { key: "REACH Compliance", defaultUom: "", defaultTestMethod: "Regulatory Review", valueKind: "TEXT" },
+          { key: "SVHC Content", defaultUom: "ppm", defaultTestMethod: "ICP-MS", valueKind: "RANGE" },
+          { key: "PAH Content (TRGS 552)", defaultUom: "mg/kg", defaultTestMethod: "AfPS GS 2014:01 PAK", valueKind: "RANGE" }
+        ]
+      },
+      {
+        specType: "PACKAGING",
+        label: "Packaging",
+        attributes: [
+          { key: "Container Type", defaultUom: "", defaultTestMethod: "Visual", valueKind: "TEXT" },
+          { key: "Bale / Net Weight", defaultUom: "kg", defaultTestMethod: "Scale", valueKind: "RANGE" }
+        ]
+      }
+    ],
+    PAINT: [
+      {
+        specType: "PHYSICAL",
+        label: "Physical Properties",
+        attributes: [
+          { key: "Specific Gravity", defaultUom: "g/cm3", defaultTestMethod: "ASTM D1475", valueKind: "RANGE" },
+          { key: "Viscosity (KU)", defaultUom: "KU", defaultTestMethod: "ASTM D562", valueKind: "RANGE" },
+          { key: "Fineness of Grind", defaultUom: "Hegman", defaultTestMethod: "ASTM D1210", valueKind: "RANGE" },
+          { key: "Oil Absorption", defaultUom: "g/100g", defaultTestMethod: "ASTM D281", valueKind: "RANGE" },
+          { key: "Tinting Strength", defaultUom: "Reynold's Unit", defaultTestMethod: "ISO 787-16", valueKind: "RANGE" }
+        ]
+      },
+      {
+        specType: "CHEMICAL",
+        label: "Chemical Properties",
+        attributes: [
+          { key: "Solid Content", defaultUom: "%", defaultTestMethod: "ASTM D2369", valueKind: "RANGE" },
+          { key: "pH of Aqueous Suspension", defaultUom: "", defaultTestMethod: "ISO 787-9", valueKind: "RANGE" },
+          { key: "Moisture Content", defaultUom: "%", defaultTestMethod: "ISO 787-2", valueKind: "RANGE" },
+          { key: "Acid Value", defaultUom: "mg KOH/g", defaultTestMethod: "ASTM D1639", valueKind: "RANGE" }
+        ]
+      },
+      {
+        specType: "PERFORMANCE",
+        label: "Film Performance",
+        attributes: [
+          { key: "Hiding Power (Contrast Ratio)", defaultUom: "", defaultTestMethod: "ASTM D2805", valueKind: "RANGE" },
+          { key: "Gloss (60°)", defaultUom: "GU", defaultTestMethod: "ASTM D523", valueKind: "RANGE" },
+          { key: "Dry Time — Touch", defaultUom: "min", defaultTestMethod: "ASTM D1640", valueKind: "RANGE" },
+          { key: "Dry Time — Hard", defaultUom: "hr", defaultTestMethod: "ASTM D1640", valueKind: "RANGE" },
+          { key: "Scrub Resistance", defaultUom: "cycles", defaultTestMethod: "ASTM D2486", valueKind: "RANGE" }
+        ]
+      },
+      {
+        specType: "SAFETY",
+        label: "Safety & Environment",
+        attributes: [
+          { key: "Flash Point", defaultUom: "degC", defaultTestMethod: "ASTM D93", valueKind: "RANGE" },
+          { key: "VOC Content", defaultUom: "g/L", defaultTestMethod: "ISO 11890-2", valueKind: "RANGE" },
+          { key: "GHS Classification", defaultUom: "", defaultTestMethod: "SDS Review", valueKind: "TEXT" }
+        ]
+      },
+      {
+        specType: "REGULATORY",
+        label: "Regulatory Compliance",
+        attributes: [
+          { key: "REACH Compliance", defaultUom: "", defaultTestMethod: "Regulatory Review", valueKind: "TEXT" },
+          { key: "EU Ecolabel", defaultUom: "", defaultTestMethod: "Certification Review", valueKind: "TEXT" },
+          { key: "EU VOC Directive 2004/42/EC", defaultUom: "", defaultTestMethod: "Regulatory Review", valueKind: "TEXT" }
+        ]
+      },
+      {
+        specType: "PACKAGING",
+        label: "Packaging",
+        attributes: [
+          { key: "Container Type", defaultUom: "", defaultTestMethod: "Visual", valueKind: "TEXT" },
+          { key: "Net Weight / Volume", defaultUom: "L", defaultTestMethod: "Scale", valueKind: "RANGE" },
+          { key: "Shelf Life", defaultUom: "months", defaultTestMethod: "Stability Study", valueKind: "RANGE" }
+        ]
+      }
     ]
   },
   mail: {
@@ -396,7 +576,8 @@ export async function readAppConfig(): Promise<AppConfigData> {
     revisionSchemes: stored.revisionSchemes ?? defaultConfig.revisionSchemes,
     listColumns: stored.listColumns ?? defaultConfig.listColumns,
     uoms: stored.uoms ?? defaultConfig.uoms,
-    specTemplates: stored.specTemplates ?? defaultConfig.specTemplates,
+    // Merge stored templates with defaults so newly-added industries always appear
+    specTemplates: { ...defaultConfig.specTemplates, ...(stored.specTemplates ?? {}) },
     mail: stored.mail ?? defaultConfig.mail
   };
 }

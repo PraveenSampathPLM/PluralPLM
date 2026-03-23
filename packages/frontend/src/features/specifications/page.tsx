@@ -27,7 +27,7 @@ interface SpecRecord {
 export function SpecificationsPage(): JSX.Element {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [industry, setIndustry] = useState("CHEMICAL");
+  const [industry, setIndustry] = useState("FOOD_BEVERAGE");
   const [specSearch, setSpecSearch] = useState("");
   const specRecords = useQuery({
     queryKey: ["spec-records", specSearch],
@@ -105,10 +105,11 @@ export function SpecificationsPage(): JSX.Element {
           className="mt-1 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm md:w-64"
         >
           <option value="FOOD_BEVERAGE">Food & Beverage</option>
-          <option value="CHEMICAL">Chemical</option>
-          <option value="CPG">CPG</option>
-          <option value="PAINT">Paints & Coatings</option>
+          <option value="POLYMER">Polymer</option>
+          <option value="CPG">Consumer & Personal Care</option>
+          <option value="CHEMICAL">Industrial Chemicals</option>
           <option value="TYRE">Tyre & Rubber</option>
+          <option value="PAINT">Paints & Coatings</option>
         </select>
       </div>
 
