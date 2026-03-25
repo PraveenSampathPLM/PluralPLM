@@ -474,6 +474,37 @@
       .nav-links { display: none; }
       .stats-grid, .module-grid { grid-template-columns: 1fr; }
     }
+
+    /* ── INDUSTRY CORES ── */
+    .cores-section { padding: 100px 0; background: var(--white); }
+    .cores-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-top: 56px;
+    }
+    .core-card {
+      background: var(--white);
+      border: 1px solid var(--border2);
+      border-radius: var(--r);
+      padding: 36px 32px 32px;
+      border-left: 4px solid var(--card-accent, var(--accent));
+      transition: box-shadow 0.2s, transform 0.2s;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .core-card:hover { box-shadow: 0 8px 32px rgba(0,0,0,0.08); transform: translateY(-2px); }
+    .core-card-header { display: flex; align-items: center; gap: 14px; }
+    .core-card-icon { font-size: 32px; line-height: 1; }
+    .core-card-name { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
+    .core-card-features { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+    .core-card-features li { font-size: 14px; color: var(--text2); line-height: 1.5; padding-left: 20px; position: relative; }
+    .core-card-features li::before { content: "✦"; position: absolute; left: 0; color: var(--card-accent, var(--accent)); font-size: 10px; top: 3px; }
+    .core-card-cta { font-size: 14px; font-weight: 600; color: var(--card-accent, var(--accent)); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: gap 0.15s; }
+    .core-card-cta:hover { gap: 10px; }
+    @media (max-width: 1024px) { .cores-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 640px) { .cores-grid { grid-template-columns: 1fr; } .cores-section { padding: 72px 0; } }
   </style>
 </head>
 <body>
@@ -586,6 +617,98 @@
         <div class="stat-num">Free</div>
         <div class="stat-label">Implementation included</div>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── INDUSTRY CORES ── -->
+<section class="cores-section">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="section-eyebrow">Industry-Specific Cores</span>
+      <h2 class="section-h2">Formula-First.<br>Built for Your Industry.</h2>
+      <p class="section-p">Every Tatva deployment ships with a pre-configured core — master data, specification templates, regulatory workflows, and NPD stage-gates tailored to how your industry actually works.</p>
+    </div>
+    <div class="cores-grid">
+
+      <div class="core-card reveal" style="--card-accent:#138808; transition-delay:.05s">
+        <div class="core-card-header">
+          <span class="core-card-icon">🌾</span>
+          <span class="core-card-name">Food &amp; Beverage</span>
+        </div>
+        <ul class="core-card-features">
+          <li>Automated FSSAI/FDA label generation directly from formula composition</li>
+          <li>Allergen matrix with batch-level traceability across all ingredients</li>
+          <li>Nutrition roll-up calculated from raw material specifications</li>
+        </ul>
+        <a href="#" class="core-card-cta">Explore the Food &amp; Beverage Core →</a>
+      </div>
+
+      <div class="core-card reveal" style="--card-accent:#E8590C; transition-delay:.10s">
+        <div class="core-card-header">
+          <span class="core-card-icon">🧴</span>
+          <span class="core-card-name">Consumer &amp; Personal Care</span>
+        </div>
+        <ul class="core-card-features">
+          <li>INCI name mapping on every formula ingredient, auto-populated from RM master</li>
+          <li>IFRA compliance check built into NPD stage-gate before development sign-off</li>
+          <li>Stability testing protocol linked directly to the regulatory dossier</li>
+        </ul>
+        <a href="#" class="core-card-cta">Explore the Consumer &amp; Personal Care Core →</a>
+      </div>
+
+      <div class="core-card reveal" style="--card-accent:#1A237E; transition-delay:.15s">
+        <div class="core-card-header">
+          <span class="core-card-icon">⚗️</span>
+          <span class="core-card-name">Specialty Chemicals</span>
+        </div>
+        <ul class="core-card-features">
+          <li>GHS/SDS auto-generation from formula composition and hazard classification</li>
+          <li>VOC content tracking measured against EU Directive 2004/42/EC thresholds</li>
+          <li>CAS registry integration on raw material master with REACH compliance flags</li>
+        </ul>
+        <a href="#" class="core-card-cta">Explore the Specialty Chemicals Core →</a>
+      </div>
+
+      <div class="core-card reveal" style="--card-accent:#0277BD; transition-delay:.20s">
+        <div class="core-card-header">
+          <span class="core-card-icon">🧪</span>
+          <span class="core-card-name">Polymer &amp; Rubber</span>
+        </div>
+        <ul class="core-card-features">
+          <li>Melt flow index and tensile strength specifications managed per polymer grade</li>
+          <li>Additive loading tracked at formula ingredient level with overage controls</li>
+          <li>FDA 21 CFR food-contact compliance status on every raw material record</li>
+        </ul>
+        <a href="#" class="core-card-cta">Explore the Polymer &amp; Rubber Core →</a>
+      </div>
+
+      <div class="core-card reveal" style="--card-accent:#37474F; transition-delay:.25s">
+        <div class="core-card-header">
+          <span class="core-card-icon">🏎️</span>
+          <span class="core-card-name">Tyre &amp; Rubber Compounds</span>
+        </div>
+        <ul class="core-card-features">
+          <li>Mooney viscosity and cure parameters tracked per compound batch and grade</li>
+          <li>Carbon black loading managed against rolling-resistance and EU tyre label targets</li>
+          <li>REACH SVHC and PAH content compliance flags on every raw material</li>
+        </ul>
+        <a href="#" class="core-card-cta">Explore the Tyre &amp; Rubber Core →</a>
+      </div>
+
+      <div class="core-card reveal" style="--card-accent:#6A1B9A; transition-delay:.30s">
+        <div class="core-card-header">
+          <span class="core-card-icon">🎨</span>
+          <span class="core-card-name">Paints &amp; Coatings</span>
+        </div>
+        <ul class="core-card-features">
+          <li>VOC content computed from formula with live EU Directive 2004/42/EC comparison</li>
+          <li>Fineness of grind and hiding power specifications per pigment grade</li>
+          <li>GHS/SDS automation generated from raw material hazard classifications</li>
+        </ul>
+        <a href="#" class="core-card-cta">Explore the Paints &amp; Coatings Core →</a>
+      </div>
+
     </div>
   </div>
 </section>
